@@ -1,6 +1,6 @@
 # 01: Keputusan hosting, data residency & build-vs-buy
 
-Status: needs-triage
+Status: done
 Type: grilling
 Priority: P0
 Milestone: M0
@@ -16,6 +16,9 @@ Tiga hal belum diputuskan: lokasi hosting, data residency, dan apakah modul AI d
 - Konfirmasi single-tenant internal (ASM-4).
 
 ## Acceptance criteria
-- [ ] Keputusan tercatat sebagai ADR di `docs/adr/`.
-- [ ] Spec §18 (U3, U4, U7, U11) dan §19 diperbarui dengan hasil keputusan.
-- [ ] Tiket yang terdampak build-vs-buy diberi catatan (tetap, digabung, atau dibatalkan).
+- [x] Keputusan tercatat sebagai ADR di `docs/adr/`.
+- [x] Spec §18 (U3, U4, U7, U11) dan §19 diperbarui dengan hasil keputusan.
+- [x] Tiket yang terdampak build-vs-buy diberi catatan (tetap, digabung, atau dibatalkan).
+
+## Hasil
+Diputuskan 2026-10-02, lihat `docs/adr/0001-hosting-residency-build-scope.md`: ASM-5 (inventaris vendor diasumsikan tanpa modul AI aktif, wajib diverifikasi), DEC-5 fokus inti, U3 on-prem DC + DRC bank (cloud-portable), U4 tanpa komponen offshore dan LLM offshore diatur via katalog + policy, U11 single-tenant tenant-aware.

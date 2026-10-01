@@ -141,7 +141,7 @@ Organisasi dapat mengadopsi AI (sanctioned AI, internal LLM apps, autonomous age
 ## 4. Functional Requirements
 
 ### 4.1 AI Discovery & App Catalog (FR-DISC)
-- **FR-DISC-1** Sistem MUST memelihara katalog AI app: `vendor, app, domains[], api_endpoints[], category (chat, code, image, agent, embedding, meeting, plugin/extension), data_retention_policy, trains_on_customer_data, hosting_region, certifications, risk_tier`.
+- **FR-DISC-1** Sistem MUST memelihara katalog AI app: `vendor, app, domains[], api_endpoints[], category (chat, code, image, agent, embedding, meeting, plugin/extension), data_retention_policy, trains_on_customer_data, hosting_region, ojk_approval_ref, certifications, risk_tier`.
 - **FR-DISC-2** Fingerprinting MUST mendukung:
   - domain/SNI
   - URL path pattern
@@ -486,6 +486,7 @@ erDiagram
     text category
     text sanction
     text hosting_region
+    text ojk_approval_ref
     bool trains_on_data
     int risk_tier
     date review_at
@@ -899,7 +900,7 @@ normalize (NFKC, zero-width strip, homoglyph map, decode layers ≤ 3)
 - **Pseudonymization.** Identitas user di analitik memakai HMAC. Re-identifikasi hanya untuk peran berhak.
 - **Model-training controls.** Konten tenant tidak dipakai melatih model global (§9.3). Kontrak dengan provider LLM yang diteruskan gateway MUST mengatur *no training on customer data* dan retensi. Nilai ini dicatat di katalog (`trains_on_data`).
 - **Minimisasi data untuk monitoring karyawan.** Transparansi ke karyawan melalui kebijakan internal. Pertimbangkan DPIA sebelum rollout inline proxy (UU PDP: penilaian dampak untuk pemantauan sistematis skala besar).
-- **Data residency [ASM-1].** Semua komponen yang memproses konten di-deploy di data center / region Indonesia (POJK 11/2022 mensyaratkan data center dan DRC bank di Indonesia kecuali ada persetujuan OJK).
+- **Data residency [ASM-1, dikonfirmasi ADR-0001].** Semua komponen yang memproses konten di-deploy di DC dan DRC bank di Indonesia (POJK 11/2022 mensyaratkan data center dan DRC bank di Indonesia kecuali ada persetujuan OJK). Platform tidak punya komponen, penyimpanan, atau telemetri konten offshore; feed eksternal hanya *pull* masuk dan bertanda tangan. Prompt ke LLM offshore diatur lewat katalog (`hosting_region`, `ojk_approval_ref`) dan default policy per sensitivity: `restricted` → block, `confidential` → redact/tokenize, `internal`/`public` → allow hanya untuk app `sanctioned`. Detail: `docs/adr/0001-hosting-residency-build-scope.md`.
 
 ---
 
@@ -919,16 +920,16 @@ normalize (NFKC, zero-width strip, homoglyph map, decode layers ≤ 3)
 | ITSM | ServiceNow, Jira SM | out | P1 |
 | EDR | CrowdStrike, Defender (konteks device, containment) | in/out | P2 |
 | Secrets | HashiCorp Vault, cloud secret manager | in | P0 |
-| KMS/HSM | HSM on-prem / cloud KMS region ID | in | P0 |
+| KMS/HSM | HSM on-prem | in | P0 |
 
 ---
 
 ## 12. Infrastructure, CI/CD, Observability
 
 ### 12.1 Infrastructure
-- **Kubernetes** (on-prem atau cloud region Indonesia; `unspecified`), ≥ 3 AZ/zone bila tersedia.
+- **Kubernetes** on-prem di DC bank, DRC di DC cadangan bank (U3, ADR-0001). Cloud-portable: hanya komponen OSS di daftar ini, tanpa managed service yang mengunci ke satu cloud. ≥ 3 zone/rack failure domain bila tersedia.
 - **Kafka** (atau Redpanda) + schema registry untuk event.
-- **PostgreSQL** 16+ HA (Patroni atau managed) dengan RLS.
+- **PostgreSQL** 16+ HA (Patroni) dengan RLS.
 - **OpenSearch** untuk pencarian investigasi.
 - **Redis** untuk rate limit, session, dan cache keputusan pendek (TTL ≤ 60 detik, key = hash input kanonik).
 - **OPA** sidecar per PEP.
@@ -1069,15 +1070,15 @@ M2 dan M3 berjalan paralel jika tim ≥ 10 orang. Jika kurang, keduanya sekuensi
 |---|---|---|
 | U1 | Budget | `unspecified` |
 | U2 | Ukuran & komposisi tim final | `unspecified` (asumsi 8–10) |
-| U3 | Hosting: on-prem DC vs cloud region Indonesia; vendor cloud | `unspecified` |
-| U4 | Data residency detail & kebutuhan persetujuan OJK untuk komponen offshore (jika ada) | `unspecified` (asumsi semua di Indonesia) |
+| U3 | Hosting: on-prem DC vs cloud region Indonesia; vendor cloud | **Diputuskan:** on-prem DC + DRC bank, cloud-portable (`docs/adr/0001-hosting-residency-build-scope.md`) |
+| U4 | Data residency detail & kebutuhan persetujuan OJK untuk komponen offshore (jika ada) | **Diputuskan:** tidak ada komponen offshore; LLM offshore diatur via katalog + policy per sensitivity (§10.2, ADR-0001) |
 | U5 | Target sertifikasi (ISO 27001, ISO 42001, SOC 2) untuk platform ini | `unspecified` |
 | U6 | Volume traffic AI & jumlah pengguna aktual | `unspecified` (asumsi §13.2) |
-| U7 | Build vs buy vs hybrid: apakah SWG/CASB yang ada (mis. Netskope, Zscaler, atau Palo Alto) sudah punya modul AI yang dapat dipakai | **Perlu keputusan sebelum M1**. Lihat §19 |
+| U7 | Build vs buy vs hybrid: apakah SWG/CASB yang ada (mis. Netskope, Zscaler, atau Palo Alto) sudah punya modul AI yang dapat dipakai | **Diputuskan sementara:** fokus inti (DEC-5) di atas **[ASM-5]** inventaris vendor belum diketahui, dianggap tidak ada modul AI aktif. Wajib diverifikasi infra/procurement (ADR-0001) |
 | U8 | Daftar AI app sanctioned saat ini & roadmap AI internal (Copilot, chatbot nasabah, agent) | `unspecified` |
 | U9 | Kebijakan retensi resmi bank untuk log keamanan | `unspecified` |
 | U10 | Apakah ada layanan dalam cakupan EU AI Act | `unspecified` |
-| U11 | Satu tenant (internal bank) atau multi-tenant (produk) | asumsi **[ASM-4]**: single-tenant internal, tetapi desain tenant-aware |
+| U11 | Satu tenant (internal bank) atau multi-tenant (produk) | **Diputuskan [ASM-4 dikonfirmasi]:** single-tenant internal, tenant-aware (`tenant_id` + RLS + HMAC per tenant), tanpa fitur produk multi-tenant (ADR-0001) |
 
 ---
 
@@ -1104,7 +1105,7 @@ Implikasi: nilai diferensiasi build internal ada pada:
 3. data residency penuh di Indonesia
 4. bukti kepatuhan OJK/UU PDP
 
-Rekomendasi **[DEC-5, usulan]**: evaluasi dulu kemampuan modul AI pada SWG/CASB/DLP yang sudah dimiliki (U7). Jika sudah ada, platform ini fokus pada AI Gateway, MCP Gateway, detektor lokal, dan compliance layer, lalu mengonsumsi event dari vendor tersebut.
+**[DEC-5, diputuskan 2026-10-02, ADR-0001]**: v1 fokus pada AI Gateway, MCP Gateway, detektor lokal, policy, audit, incident, compliance layer, dan connector data-at-rest. Shadow AI v1 pasif dari log proxy/SWG/DNS. Browser extension (tiket 22), ICAP adapter (23), dan endpoint agent (36) ditunda ke M3+ dan dievaluasi ulang setelah **[ASM-5]** (inventaris SWG/CASB/DLP) terverifikasi. Bila vendor sudah punya modul AI, event-nya dikonsumsi lewat pipeline event yang sama.
 
 ---
 

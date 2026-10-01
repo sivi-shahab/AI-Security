@@ -15,9 +15,11 @@ Katalog dipakai sebagai input `destination` di policy dan untuk laporan shadow A
 - Status `sanctioned | tolerated | unsanctioned | blocked | under_review` beserta owner, alasan, dan `review_at`.
 - Feed katalog berversi + override lokal tanpa redeploy; feed ditandatangani.
 - API `GET/PATCH /apps` dan agregasi `APP_USAGE_DAILY`.
-- Atribut risiko: `trains_on_data`, retensi, `hosting_region`, sertifikasi.
+- Atribut risiko: `trains_on_data`, retensi, `hosting_region`, `ojk_approval_ref`, sertifikasi.
+- `hosting_region` dan `ojk_approval_ref` menjadi input residency policy (ADR-0001, spec §10.2).
 
 ## Acceptance criteria
 - [ ] Perubahan status tercatat di audit log.
 - [ ] Perubahan status ter-reflect di keputusan OPA ≤ 60 s.
 - [ ] Feed tanpa signature valid ditolak.
+- [ ] App dengan `hosting_region` di luar Indonesia tanpa `ojk_approval_ref` ditandai di laporan.

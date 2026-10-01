@@ -17,12 +17,14 @@ PEP P0 untuk app-to-LLM.
 - Block memakai HTTP 403 dengan body berformat error provider + header `X-AISec-Decision-Id`, `X-AISec-Action`.
 - Rate limit dan kuota token per app/user (FR-PSEC-9) via Redis.
 - Konfigurasi fail mode per app (§13.3).
+- Input `destination.hosting_region` dan `destination.ojk_approval_ref` dari katalog (tiket 16) dikirim ke OPA untuk residency policy (ADR-0001).
 
 ## Acceptance criteria
 - [ ] Contract test golden request/response per provider.
 - [ ] Overhead p95 ≤ 80 ms, p99 ≤ 200 ms (text ≤ 8K token) pada load test.
 - [ ] SDK resmi OpenAI/Anthropic tidak crash saat menerima block.
 - [ ] Chaos test: detection/OPA mati → perilaku sesuai fail mode.
+- [ ] Prompt `restricted` ke provider offshore di-block; `confidential` ter-redact sebelum keluar.
 
 ## Out of scope
 Response streaming (tiket 14) dan tokenize (tiket 24).

@@ -1,9 +1,9 @@
 # 36: Endpoint agent (Windows/macOS)
 
-Status: needs-triage
+Status: deferred
 Type: task
 Priority: P2
-Milestone: M4
+Milestone: M4 (M3+ re-eval)
 Blocked by: 08, 11
 Spec: `../spec.md` §3.1 P2; §5.4
 
@@ -18,3 +18,6 @@ Coverage off-network, aplikasi AI desktop, clipboard, dan agent lokal.
 ## Acceptance criteria
 - [ ] Matriks kompatibilitas OS lulus.
 - [ ] Overhead CPU/memori dalam batas yang disepakati (`unspecified`, tetapkan di awal tiket).
+
+## Catatan ADR-0001
+Ditunda ke M3+ (DEC-5). Dievaluasi ulang setelah [ASM-5] inventaris SWG/CASB/DLP terverifikasi: lanjut bila vendor tidak punya kapabilitas ini, dibatalkan bila sudah ada (event vendor dikonsumsi lewat tiket 15).

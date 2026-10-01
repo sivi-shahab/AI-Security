@@ -15,9 +15,10 @@ Satu PDP untuk semua PEP (prinsip P2).
 - Library Rego untuk precedence: `block > quarantine > require_approval > tokenize > redact > warn > allow` + penggabungan obligations.
 - Policy Service membangun dan menandatangani bundle; OPA sidecar memverifikasi dan melakukan long-poll.
 - Decision log dengan masking field sensitif.
-- Template kebijakan bawaan (FR-POL-8).
+- Template kebijakan bawaan (FR-POL-8), termasuk template residency ADR-0001: destinasi offshore → `restricted` block, `confidential` redact/tokenize, `internal`/`public` allow hanya untuk app `sanctioned`.
 
 ## Acceptance criteria
 - [ ] `opa test` untuk precedence dan setiap template.
 - [ ] `opa bench`: eval p99 ≤ 5 ms di sidecar.
 - [ ] Bundle dengan signature tidak valid ditolak dan memicu alert.
+- [ ] `opa test` untuk template residency di setiap kombinasi sensitivity × `hosting_region` × status sanction.
