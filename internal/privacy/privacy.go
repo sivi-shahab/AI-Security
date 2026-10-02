@@ -4,7 +4,9 @@ package privacy
 import (
 	_ "embed"
 	"log/slog"
+	"maps"
 	"os"
+	"slices"
 	"strings"
 )
 
@@ -20,6 +22,11 @@ var forbidden = func() map[string]bool {
 	}
 	return m
 }()
+
+// Forbidden lists the field names (lowercase) that must never reach a log. OPA decision-log masking uses it too.
+func Forbidden() []string {
+	return slices.Sorted(maps.Keys(forbidden))
+}
 
 // ReplaceAttr drops forbidden fields at any nesting level. Use it in every slog handler.
 func ReplaceAttr(_ []string, a slog.Attr) slog.Attr {

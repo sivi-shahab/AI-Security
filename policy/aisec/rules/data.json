@@ -1,0 +1,91 @@
+{
+  "version": "builtin-1",
+  "items": [
+    {
+      "id": "tpl.pii-id-to-unsanctioned",
+      "description": "FR-POL-8: PII-ID ke AI yang tidak sanctioned = block.",
+      "when": [
+        {"field": "direction", "op": "in", "value": ["request", "tool_call"]},
+        {"field": "destination.sanction", "op": "in", "value": ["unsanctioned", "blocked", "under_review"]},
+        {"field": "content.classes", "op": "class_any", "value": ["PII_ID.*"]}
+      ],
+      "action": "block",
+      "reason": "PII_ID_TO_UNSANCTIONED_AI"
+    },
+    {
+      "id": "tpl.secret-to-any-ai",
+      "description": "FR-POL-8: credentials/secrets ke AI mana pun = block.",
+      "when": [
+        {"field": "direction", "op": "in", "value": ["request", "tool_call"]},
+        {"field": "content.classes", "op": "class_any", "value": ["SECRET.*"]}
+      ],
+      "action": "block",
+      "reason": "SECRET_TO_AI"
+    },
+    {
+      "id": "tpl.pci-pan-redact",
+      "description": "FR-POL-8: PCI PAN = redact (semua arah, termasuk response).",
+      "when": [
+        {"field": "content.classes", "op": "class_any", "value": ["PCI.PAN"]}
+      ],
+      "action": "redact",
+      "obligations": [{"type": "redact", "classes": ["PCI.PAN"]}],
+      "reason": "PCI_PAN"
+    },
+    {
+      "id": "tpl.restricted-to-sanctioned",
+      "description": "FR-POL-8: restricted ke AI sanctioned = redact + log.",
+      "when": [
+        {"field": "direction", "op": "in", "value": ["request", "tool_call"]},
+        {"field": "content.sensitivity", "op": "eq", "value": "restricted"},
+        {"field": "destination.sanction", "op": "eq", "value": "sanctioned"}
+      ],
+      "action": "redact",
+      "obligations": [{"type": "redact", "classes": ["*"]}, {"type": "log_evidence"}],
+      "reason": "RESTRICTED_TO_SANCTIONED_AI"
+    },
+    {
+      "id": "tpl.injection-high",
+      "description": "FR-POL-8: injection_score >= 0.9 = block (semua arah: direct dan indirect).",
+      "when": [
+        {"field": "content.injection_score", "op": "gte", "value": 0.9}
+      ],
+      "action": "block",
+      "reason": "PROMPT_INJECTION"
+    },
+    {
+      "id": "res.offshore-restricted",
+      "description": "ADR-0001: konten restricted tidak boleh ke pemrosesan di luar Indonesia.",
+      "when": [
+        {"field": "direction", "op": "in", "value": ["request", "tool_call"]},
+        {"field": "destination.region", "op": "neq", "value": "ID"},
+        {"field": "content.sensitivity", "op": "eq", "value": "restricted"}
+      ],
+      "action": "block",
+      "reason": "RESIDENCY_RESTRICTED_OFFSHORE"
+    },
+    {
+      "id": "res.offshore-confidential",
+      "description": "ADR-0001: konten confidential ke luar Indonesia harus di-redact. PEP MUST block bila redaction tidak dapat diterapkan.",
+      "when": [
+        {"field": "direction", "op": "in", "value": ["request", "tool_call"]},
+        {"field": "destination.region", "op": "neq", "value": "ID"},
+        {"field": "content.sensitivity", "op": "eq", "value": "confidential"}
+      ],
+      "action": "redact",
+      "obligations": [{"type": "redact", "classes": ["*"]}],
+      "reason": "RESIDENCY_CONFIDENTIAL_OFFSHORE"
+    },
+    {
+      "id": "res.offshore-unsanctioned",
+      "description": "ADR-0001: destinasi offshore hanya boleh bila app sanctioned (semua sensitivity).",
+      "when": [
+        {"field": "direction", "op": "in", "value": ["request", "tool_call"]},
+        {"field": "destination.region", "op": "neq", "value": "ID"},
+        {"field": "destination.sanction", "op": "neq", "value": "sanctioned"}
+      ],
+      "action": "block",
+      "reason": "RESIDENCY_OFFSHORE_UNSANCTIONED"
+    }
+  ]
+}

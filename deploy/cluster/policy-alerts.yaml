@@ -1,0 +1,25 @@
+# Alerts for the OPA sidecars (prometheus-operator). OPA keeps serving the last verified bundle, so a rejected
+# bundle is silent for traffic: these make it loud. Scraped from each sidecar's :8282/metrics.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: aisec-policy-bundle
+  namespace: aisec
+spec:
+  groups:
+    - name: policy-bundle
+      rules:
+        # Security event (spec §12.3): someone served a bundle not signed by the Policy Service key, or altered one.
+        # OPA reports every load error as code=bundle_error, so match the verification messages.
+        - alert: PolicyBundleSignatureInvalid
+          expr: >-
+            sum by (namespace, pod) (increase(bundle_failed_load_counter{name="aisec",
+            message=~".*(signature|digest mismatch|verif|signatures.json).*"}[5m])) > 0
+          labels: {severity: critical, category: security}
+          annotations:
+            summary: OPA in {{ $labels.pod }} rejected a policy bundle that failed signature verification
+        - alert: PolicyBundleLoadFailing
+          expr: sum by (namespace, pod) (increase(bundle_failed_load_counter{name="aisec"}[15m])) > 3
+          labels: {severity: warning}
+          annotations:
+            summary: OPA in {{ $labels.pod }} keeps failing to load the policy bundle; still on the last verified one

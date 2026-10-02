@@ -1,0 +1,25 @@
+# OPA sidecar (PDP) config, spec FR-POL-1/9. The public key is not here: the container passes
+# --set-file keys.aisec-policy.key=/keys/bundle.pub from the policy-bundle-pubkey ConfigMap.
+services:
+  policy:
+    url: http://control-plane/bundles
+bundles:
+  aisec:
+    service: policy
+    resource: aisec.tar.gz
+    # Last verified bundle survives an OPA restart while the Policy Service is down (spec §13.1).
+    persist: true
+    signing:
+      keyid: aisec-policy  # policysvc.KeyID; an unsigned or wrongly signed bundle is never activated
+    polling:
+      long_polling_timeout_seconds: 60
+keys:
+  aisec-policy:
+    algorithm: ES256
+persistence_directory: /var/opa
+decision_logs:
+  console: true
+  mask_decision: /system/log/mask
+status:
+  # bundle_failed_load_counter on /metrics feeds the signature-failure alert (deploy/cluster/policy-alerts.yaml).
+  prometheus: true

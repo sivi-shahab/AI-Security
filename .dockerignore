@@ -3,7 +3,9 @@
 !go.sum
 !cmd/
 !internal/
+!policy/
 !services/
 **/__pycache__
 **/test_*.py
 **/*_test.go
+**/*_test.rego

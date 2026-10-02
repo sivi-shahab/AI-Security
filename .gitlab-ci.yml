@@ -29,6 +29,8 @@ workflow:
         DOCKERFILE: build/go.Dockerfile
       - SERVICE: model-inference
         DOCKERFILE: services/model-inference/Dockerfile
+      - SERVICE: opa  # upstream OPA, re-signed so Kyverno admits the PDP sidecar
+        DOCKERFILE: build/opa.Dockerfile
 
 lint:go:
   stage: lint

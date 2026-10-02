@@ -1,0 +1,101 @@
+{
+  "input": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "aisec/pdp/input/v1",
+    "title": "Canonical PDP input v1 (spec FR-POL-2). Never carries raw content.",
+    "type": "object",
+    "required": ["channel", "direction", "principal", "destination", "content"],
+    "additionalProperties": false,
+    "properties": {
+      "channel": {"enum": ["ai_gateway", "web_proxy", "browser_ext", "endpoint", "mcp_gateway", "connector"]},
+      "direction": {"enum": ["request", "response", "tool_call", "tool_result", "at_rest"]},
+      "principal": {
+        "type": "object",
+        "required": ["type", "id"],
+        "additionalProperties": false,
+        "properties": {
+          "type": {"enum": ["user", "agent", "service"]},
+          "id": {"type": "string", "minLength": 1, "description": "Pseudonymous ID (HMAC per tenant, spec §10.2)."},
+          "groups": {"type": "array", "items": {"type": "string"}},
+          "risk": {"type": "number", "minimum": 0, "maximum": 1},
+          "device": {"enum": ["managed", "unmanaged", "unknown"]},
+          "account_context": {"enum": ["corporate", "personal", "unknown"]}
+        }
+      },
+      "destination": {
+        "type": "object",
+        "required": ["app_id", "sanction", "region"],
+        "additionalProperties": false,
+        "properties": {
+          "app_id": {"type": "string", "minLength": 1},
+          "sanction": {"enum": ["sanctioned", "tolerated", "unsanctioned", "blocked", "under_review"], "description": "Apps missing from the catalog MUST be sent as unsanctioned."},
+          "region": {"type": "string", "pattern": "^([A-Z]{2}|unknown)$", "description": "ISO 3166-1 alpha-2 of where content is processed; 'unknown' is treated as offshore (ADR-0001)."},
+          "trains_on_data": {"type": "boolean"}
+        }
+      },
+      "content": {
+        "type": "object",
+        "required": ["sensitivity", "classes"],
+        "additionalProperties": false,
+        "properties": {
+          "sensitivity": {"enum": ["public", "internal", "confidential", "restricted"]},
+          "classes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["type", "count", "confidence"],
+              "additionalProperties": false,
+              "properties": {
+                "type": {"type": "string", "pattern": "^(PII_ID|FIN|PCI|PHI|SECRET|CODE|LEGAL_HR|CUSTOM)\\.[A-Z0-9_]+$"},
+                "count": {"type": "integer", "minimum": 1},
+                "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+              }
+            }
+          },
+          "injection_score": {"type": "number", "minimum": 0, "maximum": 1},
+          "tokens": {"type": "integer", "minimum": 0}
+        }
+      },
+      "agent": {
+        "type": "object",
+        "required": ["agent_id"],
+        "additionalProperties": false,
+        "properties": {
+          "agent_id": {"type": "string", "minLength": 1},
+          "tool": {"type": "string"},
+          "tool_risk": {"enum": ["low", "medium", "high"]},
+          "hitl_available": {"type": "boolean"}
+        }
+      },
+      "risk_score": {"type": "number", "minimum": 0, "maximum": 100}
+    }
+  },
+  "output": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "aisec/pdp/output/v1",
+    "title": "PDP decision v1 (spec FR-POL-3)",
+    "type": "object",
+    "required": ["action", "obligations", "reason_codes", "matched_rules", "monitor_rules", "policy_id", "policy_version"],
+    "additionalProperties": false,
+    "properties": {
+      "action": {"enum": ["block", "quarantine", "require_approval", "tokenize", "redact", "warn", "allow"]},
+      "obligations": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["type"],
+          "properties": {
+            "type": {"enum": ["redact", "tokenize", "notify", "require_justification", "log_evidence"]},
+            "classes": {"type": "array", "items": {"type": "string"}},
+            "target": {"type": "string"}
+          }
+        }
+      },
+      "reason_codes": {"type": "array", "items": {"type": "string"}},
+      "matched_rules": {"type": "array", "items": {"type": "string"}, "description": "Enforcing rules that matched."},
+      "monitor_rules": {"type": "array", "items": {"type": "string"}, "description": "Monitor-only rules that matched; they never change action."},
+      "policy_id": {"type": "string"},
+      "policy_version": {"type": "string"}
+    }
+  }
+}

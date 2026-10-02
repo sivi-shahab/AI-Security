@@ -1,10 +1,11 @@
 # Shared image for every Go service: docker build --build-arg SERVICE=<cmd name> -f build/go.Dockerfile .
 FROM golang:1.25-alpine@sha256:1ae0735f00daffa3aaf1363a5184c0d2dc55c78e3db4ec70241cdac97bf84b59 AS build
 WORKDIR /src
-COPY go.mod ./
+COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd ./cmd
 COPY internal ./internal
+COPY policy ./policy
 ARG SERVICE
 RUN test -n "$SERVICE" && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/app ./cmd/${SERVICE}
 

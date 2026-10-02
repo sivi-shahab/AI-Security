@@ -4,3 +4,6 @@ namespace: aisec
 resources:
   - namespace.yaml
   - services.yaml
+configMapGenerator:
+  - name: opa-config
+    files: [opa/opa.yaml]
