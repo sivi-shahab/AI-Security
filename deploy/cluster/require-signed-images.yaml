@@ -1,0 +1,45 @@
+# Admission (Kyverno ≥ 1.16): only images signed by the CI key may run in namespace `aisec`.
+# Key-based, no public Rekor/CT log: ADR-0001 forbids offshore dependencies.
+# Production: replace `key.data` with `key.kms: <bank KMS/HSM URI>` (same key the `sign` CI job uses).
+apiVersion: policies.kyverno.io/v1
+kind: ImageValidatingPolicy
+metadata:
+  name: require-signed-images
+spec:
+  validationActions: [Deny]
+  failurePolicy: Fail
+  webhookConfiguration:
+    timeoutSeconds: 30
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: aisec
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods]
+  matchImageReferences:
+    - glob: "*"
+  validationConfigurations:
+    required: true
+    mutateDigest: true
+    verifyDigest: true
+  attestors:
+    - name: ci
+      cosign:
+        key:
+          data: |
+            -----BEGIN PUBLIC KEY-----
+            REPLACE_WITH_CI_SIGNING_PUBLIC_KEY
+            -----END PUBLIC KEY-----
+        ctlog:
+          insecureIgnoreTlog: true
+          insecureIgnoreSCT: true
+  validations:
+    - expression: >-
+        images.containers.map(image, verifyImageSignatures(image, [attestors.ci])).all(n, n > 0)
+      message: every container image must be signed by the CI key
+# ponytail: SBOM attestation is signed + verified in CI (`sign` job) but not re-checked here. Kyverno 1.19
+# ivpol rejects every attestation verified without a transparency log (verifier.go: `!verified` = no Rekor
+# bundle). Add `attestations` + verifyAttestationSignatures once an on-prem Rekor exists or Kyverno fixes it.

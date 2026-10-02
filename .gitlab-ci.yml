@@ -1,0 +1,143 @@
+# Pipeline (spec §12.2): lint → unit → SAST → SCA → secret scan → IaC scan → build distroless → SBOM → sign.
+# On-prem only (ADR-0001): tool images MUST come from the internal mirror; cosign never talks to public Rekor/Fulcio.
+# Not yet here: SLSA provenance, integration/adversarial suites, deploy + canary (their own tickets).
+
+variables:
+  MIRROR: ""  # e.g. "registry.bank.local/mirror/" — set at group level so every image below is pulled internally
+  GO_IMAGE: ${MIRROR}golang:1.25
+  LINT_GO_IMAGE: ${MIRROR}golangci/golangci-lint:v2.5.0
+  RUFF_IMAGE: ${MIRROR}ghcr.io/astral-sh/ruff:0.14.0-alpine
+  PYTHON_IMAGE: ${MIRROR}python:3.11-slim  # matches distroless python3-debian12
+  SEMGREP_IMAGE: ${MIRROR}semgrep/semgrep:1.140.0
+  TRIVY_IMAGE: ${MIRROR}aquasec/trivy:0.67.2
+  GITLEAKS_IMAGE: ${MIRROR}zricethezav/gitleaks:v8.28.0
+  BUILDKIT_IMAGE: ${MIRROR}moby/buildkit:v0.25.1-rootless
+  COSIGN_IMAGE: ${MIRROR}ghcr.io/sigstore/cosign/cosign:v3.0.2-dev
+  IMAGE_BASE: $CI_REGISTRY_IMAGE
+
+stages: [lint, test, scan, build, publish, sign]
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+.services: &services
+  parallel:
+    matrix:
+      - SERVICE: [control-plane, ai-gateway, detection-svc]
+        DOCKERFILE: build/go.Dockerfile
+      - SERVICE: model-inference
+        DOCKERFILE: services/model-inference/Dockerfile
+
+lint:go:
+  stage: lint
+  image: $LINT_GO_IMAGE
+  script:
+    - test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+    - golangci-lint run ./...
+
+lint:python:
+  stage: lint
+  image: $RUFF_IMAGE
+  script:
+    - ruff check services
+    - ruff format --check services
+
+test:go:
+  stage: test
+  image: $GO_IMAGE
+  script:
+    - go vet ./...
+    - go test -race ./...  # includes the shared privacy test (internal/privacy)
+
+test:python:
+  stage: test
+  image: $PYTHON_IMAGE
+  script:
+    - cd services/model-inference && python -m unittest -v
+
+sast:
+  stage: scan
+  image: $SEMGREP_IMAGE
+  script:
+    - semgrep scan --config p/default --metrics=off --error
+
+sca:
+  stage: scan
+  image: $TRIVY_IMAGE
+  script:
+    # Vulnerabilities + licenses in go.mod / Python deps. Forbidden licenses are CRITICAL.
+    - trivy fs --scanners vuln,license --severity HIGH,CRITICAL --exit-code 1 .
+
+secrets:
+  stage: scan
+  image: { name: $GITLEAKS_IMAGE, entrypoint: [""] }
+  variables: { GIT_DEPTH: 0 }  # whole history, not just the tip
+  script:
+    - gitleaks git --redact --verbose .
+
+iac:
+  stage: scan
+  image: $TRIVY_IMAGE
+  script:
+    - trivy config --severity HIGH,CRITICAL --exit-code 1 .
+
+build:
+  stage: build
+  image: { name: $BUILDKIT_IMAGE, entrypoint: [""] }
+  <<: *services
+  variables:
+    BUILDKITD_FLAGS: --oci-worker-no-process-sandbox
+  script:
+    - mkdir -p ~/.docker digests
+    - printf '{"auths":{"%s":{"username":"%s","password":"%s"}}}' "$CI_REGISTRY" "$CI_REGISTRY_USER" "$CI_REGISTRY_PASSWORD" > ~/.docker/config.json
+    - >
+      buildctl-daemonless.sh build
+      --frontend dockerfile.v0 --local context=. --local dockerfile=.
+      --opt filename=$DOCKERFILE --opt build-arg:SERVICE=$SERVICE
+      --output type=image,name=$IMAGE_BASE/$SERVICE:$CI_COMMIT_SHORT_SHA,push=true
+      --metadata-file meta.json
+    - |
+      sed -n 's/.*"containerimage.digest": *"\([^"]*\)".*/\1/p' meta.json > digests/$SERVICE
+    - test -s digests/$SERVICE
+  artifacts:
+    paths: [digests/]
+
+sbom:
+  stage: publish
+  image: { name: $TRIVY_IMAGE, entrypoint: [""] }
+  <<: *services
+  needs: [build]
+  variables:
+    TRIVY_USERNAME: $CI_REGISTRY_USER
+    TRIVY_PASSWORD: $CI_REGISTRY_PASSWORD
+  script:
+    - REF="$IMAGE_BASE/$SERVICE@$(cat digests/$SERVICE)"
+    - mkdir -p sbom
+    - trivy image --format cyclonedx --output sbom/$SERVICE.cdx.json "$REF"
+    - trivy image --severity HIGH,CRITICAL --exit-code 1 "$REF"
+  artifacts:
+    paths: [sbom/, digests/]
+
+sign:
+  stage: sign
+  image: { name: $COSIGN_IMAGE, entrypoint: [""] }
+  <<: *services
+  needs: [sbom]
+  rules:
+    # Signing key is a protected variable: only the default branch can sign.
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  variables:
+    # COSIGN_KEY: protected file variable, or a KMS/HSM URI (hashivault://..., pkcs11:...). COSIGN_PASSWORD likewise.
+    COSIGN_YES: "true"
+  script:
+    - REF="$IMAGE_BASE/$SERVICE@$(cat digests/$SERVICE)"
+    - cosign login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD"
+    # No public Rekor (ADR-0001). Legacy .sig/.att tags: Kyverno 1.19 does not read cosign v3 bundles.
+    - SIGN="--key $COSIGN_KEY --tlog-upload=false --new-bundle-format=false --use-signing-config=false"
+    - cosign sign $SIGN "$REF"
+    - cosign attest $SIGN --type cyclonedx --predicate sbom/$SERVICE.cdx.json "$REF"
+    # Admission only checks the signature (see deploy/cluster/require-signed-images.yaml), so verify the SBOM here.
+    - cosign public-key --key "$COSIGN_KEY" > cosign.pub
+    - cosign verify-attestation --key cosign.pub --insecure-ignore-tlog --type cyclonedx "$REF" > /dev/null

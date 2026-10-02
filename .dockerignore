@@ -1,0 +1,9 @@
+*
+!go.mod
+!go.sum
+!cmd/
+!internal/
+!services/
+**/__pycache__
+**/test_*.py
+**/*_test.go

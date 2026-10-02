@@ -1,0 +1,13 @@
+# Field yang MUST NOT muncul di log/trace (spec §10.2, §12.3).
+# Satu nama per baris, case-insensitive. Dibaca oleh Go (embed) dan Python (model-inference).
+prompt
+response
+completion
+content
+messages
+body
+raw
+text
+file_content
+tool_args
+tool_result

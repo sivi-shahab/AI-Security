@@ -1,0 +1,169 @@
+# Generated shape is identical per service; differences go in overlays.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: control-plane
+  labels: {app: control-plane}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: control-plane}
+  template:
+    metadata:
+      labels: {app: control-plane}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: control-plane
+          image: registry.local/aisec/control-plane:dev
+          imagePullPolicy: Always
+          ports: [{containerPort: 8080, name: http}]
+          readinessProbe: {httpGet: {path: /healthz, port: http}}
+          livenessProbe: {httpGet: {path: /healthz, port: http}}
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: control-plane
+spec:
+  selector: {app: control-plane}
+  ports: [{port: 80, targetPort: http, name: http}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-gateway
+  labels: {app: ai-gateway}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: ai-gateway}
+  template:
+    metadata:
+      labels: {app: ai-gateway}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: ai-gateway
+          image: registry.local/aisec/ai-gateway:dev
+          imagePullPolicy: Always
+          ports: [{containerPort: 8080, name: http}]
+          readinessProbe: {httpGet: {path: /healthz, port: http}}
+          livenessProbe: {httpGet: {path: /healthz, port: http}}
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-gateway
+spec:
+  selector: {app: ai-gateway}
+  ports: [{port: 80, targetPort: http, name: http}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: detection-svc
+  labels: {app: detection-svc}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: detection-svc}
+  template:
+    metadata:
+      labels: {app: detection-svc}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: detection-svc
+          image: registry.local/aisec/detection-svc:dev
+          imagePullPolicy: Always
+          ports: [{containerPort: 8080, name: http}]
+          readinessProbe: {httpGet: {path: /healthz, port: http}}
+          livenessProbe: {httpGet: {path: /healthz, port: http}}
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: detection-svc
+spec:
+  selector: {app: detection-svc}
+  ports: [{port: 80, targetPort: http, name: http}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: model-inference
+  labels: {app: model-inference}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: model-inference}
+  template:
+    metadata:
+      labels: {app: model-inference}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: model-inference
+          image: registry.local/aisec/model-inference:dev
+          imagePullPolicy: Always
+          ports: [{containerPort: 8080, name: http}]
+          readinessProbe: {httpGet: {path: /healthz, port: http}}
+          livenessProbe: {httpGet: {path: /healthz, port: http}}
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: model-inference
+spec:
+  selector: {app: model-inference}
+  ports: [{port: 80, targetPort: http, name: http}]
