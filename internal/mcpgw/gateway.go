@@ -33,6 +33,7 @@ import (
 
 	"aisec/internal/detect"
 	"aisec/internal/events"
+	"aisec/internal/mcptools"
 	"aisec/internal/toolscope"
 )
 
@@ -56,6 +57,10 @@ type Gateway struct {
 	Agent    func(ctx context.Context, identity string) (*RegistryAgent, error)
 	Decide   func(ctx context.Context, input map[string]any) (Decision, error)
 	Emit     func(ctx context.Context, e events.Event) error
+	// Observe reports a server's tools/list to the registry (ticket 29) and returns which tools may be called;
+	// Pins is the fallback when the registry cannot be reached: the bundle's statuses and pinned hashes.
+	Observe  func(ctx context.Context, server string, tools []map[string]any) (map[string]ToolState, error)
+	Pins     func(ctx context.Context, server string) (map[string]Pin, error)
 	Upstream *http.Client
 
 	Pepper      []byte // tenant HMAC key for principal ids and content hashes (spec §10.2)
@@ -67,6 +72,7 @@ type Gateway struct {
 	mu    sync.Mutex
 	taint map[string]taint
 	rates map[string]window
+	seen  map[string]string // "server/tool" → hash of the definition last served in tools/list
 }
 
 const (
@@ -196,8 +202,8 @@ func (g *Gateway) serve(w http.ResponseWriter, r *http.Request) {
 			}
 			body = out
 			pend = &pending{id: msg.ID, tool: toolName(msg.Params)}
-		case "resources/read":
-			pend = &pending{id: msg.ID, tool: "resources/read"}
+		case "resources/read", "tools/list":
+			pend = &pending{id: msg.ID, tool: msg.Method}
 		}
 	}
 
@@ -353,7 +359,10 @@ func (c *call) toolCall(ctx context.Context, msg *message) ([]byte, *message) {
 		args = map[string]any{}
 	}
 	t := c.tools[name]
-	agent := map[string]any{"tool": name, "tool_risk": "high", "scope_violations": 0} // unknown tools count as high
+	agent := map[string]any{"tool": name, "tool_risk": "high", "scope_violations": 0, "mcp_server": c.srv.Name} // unknown tools count as high
+	if h, ok := c.g.seenHash(c.srv.Name + "/" + name); ok {
+		agent["tool_hash"] = h
+	}
 	limit := c.g.DefaultRate
 	if t != nil {
 		agent["tool_risk"] = t.Risk
@@ -402,6 +411,11 @@ func (c *call) inspectPayload(ctx context.Context, b []byte, pend *pending) []by
 	var obj map[string]any
 	if json.Unmarshal(*field, &obj) != nil {
 		return mustJSON(rpcError(msg.ID, "tool server response not inspectable", nil)) // MCP results are objects
+	}
+	if !isErr && (matched && pend.tool == "tools/list" || !matched && obj["tools"] != nil) {
+		obj["tools"] = c.callableTools(ctx, obj["tools"])
+		msg.Result = mustJSON(obj)
+		return mustJSON(msg)
 	}
 	tool := ""
 	switch {
@@ -578,10 +592,83 @@ func (c *call) decide(ctx context.Context, direction, tool string, in *content, 
 	if x, ok := agent["rate_exceeded"].(bool); ok {
 		e.RateExceeded = &x
 	}
+	e.MCPServer, _ = agent["mcp_server"].(string)
+	e.ToolHash, _ = agent["tool_hash"].(string)
 	if err := g.Emit(ctx, e); err != nil {
 		g.Log.Error("decision event", "err", err) // ponytail: logged, not retried; a local spool if Kafka outages bite
 	}
 	return d, eid, nil
+}
+
+// --- tool definitions (ticket 29) ---
+
+// ToolState is the registry's answer for one observed tool.
+type ToolState struct {
+	Status   string `json:"status"`
+	Callable bool   `json:"callable"`
+}
+
+// Pin is a tool's status and approved definition hash in the policy bundle.
+type Pin struct {
+	Status string `json:"status"`
+	Hash   string `json:"hash"`
+}
+
+// callableTools pins what tools/list served, reports it to the registry, and keeps only the tools that may be
+// called: a new tool still under review, or a definition changed since approval (rug pull), never reaches the
+// model's context. If neither the registry nor the bundle can answer, no tool is shown.
+func (c *call) callableTools(ctx context.Context, v any) []any {
+	list, _ := v.([]any)
+	var defs []map[string]any
+	hashes := map[string]string{}
+	for _, d := range list {
+		if m, ok := d.(map[string]any); ok && mcptools.Name(m) != "" {
+			defs = append(defs, m)
+			hashes[mcptools.Name(m)] = mcptools.Hash(m)
+		}
+	}
+	c.g.mu.Lock()
+	if c.g.seen == nil {
+		c.g.seen = map[string]string{}
+	}
+	for name, h := range hashes {
+		c.g.seen[c.srv.Name+"/"+name] = h
+	}
+	c.g.mu.Unlock()
+
+	callable := map[string]bool{}
+	states, err := c.g.Observe(ctx, c.srv.Name, defs)
+	if err == nil {
+		for name, st := range states {
+			callable[name] = st.Callable
+		}
+	} else {
+		c.g.Log.Error("registry observe; falling back to the bundle", "server", c.srv.Name, "err", err)
+		pins, err := c.g.Pins(ctx, c.srv.Name)
+		if err != nil {
+			c.g.Log.Error("bundle pins", "server", c.srv.Name, "err", err)
+		}
+		for name, p := range pins {
+			callable[name] = p.Status == "approved" && p.Hash == hashes[name]
+		}
+	}
+	out := []any{}
+	for _, d := range defs {
+		if callable[mcptools.Name(d)] {
+			out = append(out, d)
+		}
+	}
+	if hidden := len(list) - len(out); hidden > 0 {
+		c.g.Log.Info("tools hidden pending review", "server", c.srv.Name, "hidden", hidden)
+	}
+	return out
+}
+
+func (g *Gateway) seenHash(key string) (string, bool) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	h, ok := g.seen[key]
+	return h, ok
 }
 
 // --- per-replica state (ponytail: in memory; shared store when replicas must agree on rates and taint) ---

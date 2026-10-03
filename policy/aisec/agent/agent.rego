@@ -4,7 +4,8 @@
 #   registered means "in the registry and active"; whatever the PEP claims about registration does not count.
 #   Unknown agents are "unregistered", quarantined/suspended ones keep that status for the rules to act on.
 #   The registry's tool allow-list decides tool_allowed and its tool risk replaces the PEP's (FR-AGT-4): an
-#   agent outside the registry has no allow-list, so it may call no tool.
+#   agent outside the registry has no allow-list, so it may call no tool. Through the MCP gateway, the tool's
+#   definition must also be approved and unchanged (tool_approved).
 package aisec.agent
 
 import rego.v1
@@ -30,7 +31,23 @@ risk_tier := entry.risk_tier if entry
 
 else := "unknown"
 
-registry := {"registered": registered, "status": status, "risk_tier": risk_tier, "tool_allowed": tool_allowed}
+# MCP tool definitions (ticket 29): callable only while approved and, when the gateway saw what the server serves
+# now (tool_hash), only while that is the pinned definition. A rug pull is blocked before any release lands.
+mcp_tool := data.aisec.mcp_tools.items[concat("/", [input.agent.mcp_server, input.agent.tool])]
+
+tool_approved if {
+	mcp_tool.status == "approved"
+	not definition_changed
+}
+
+else := false
+
+definition_changed if {
+	input.agent.tool_hash
+	input.agent.tool_hash != mcp_tool.hash
+}
+
+registry := {"registered": registered, "status": status, "risk_tier": risk_tier, "tool_allowed": tool_allowed, "tool_approved": tool_approved}
 
 agent := object.union(object.union(input.agent, registry), {"tool_risk": tool.risk}) if {
 	input.agent

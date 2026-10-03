@@ -42,7 +42,7 @@ var injectionRules = []rule{
 		`(?:jika|apabila|kalau)\s+(?:anda|kamu)\s+(?:adalah\s+)?(?:sebuah\s+|seorang\s+)?(?:ai|asisten|agen|model)\b`, 0.6),
 	inj("ai_directive", []string{"do not", "don't", "never"}, `(?:do\s+not|don't|never)\s+(?:tell|inform|mention|reveal|show|notify)\s+(?:this\s+(?:to\s+)?)?(?:the\s+)?user`, 0.6),
 	inj("ai_directive", []string{"jangan"}, `jangan\s+(?:beri\s?tahu|memberi\s?tahu(?:kan)?|bilang|kasih\s+tahu|sampaikan|tampilkan|informasikan)\s+(?:ini\s+|hal\s+ini\s+)?(?:ke(?:pada)?\s+)?(?:pengguna|user|nasabah)`, 0.6),
-	inj("ai_directive", []string{"before you", "before answer", "before respond", "before repl"}, `before\s+(?:you\s+)?(?:answer|respond|reply|replie)`, 0.6),
+	inj("ai_directive", []string{"before you"}, `before\s+you\s+(?:answer|respond|reply)`, 0.6), // "before answering X, prefer Y" is ordinary prose
 	inj("ai_directive", []string{"sebelum"}, `sebelum\s+(?:menjawab|merespons|merespon|membalas)`, 0.6),
 	inj("tool_steering", []string{"call", "invoke", "execute", "panggil", "jalankan"},
 		"(?:call|invoke|execute|panggil|jalankan)\\s+(?:the\\s+)?[`\"']?[a-z_][\\w.\\-]*[`\"']?\\s+(?:tool|function|fungsi|api)\\b", 0.35),

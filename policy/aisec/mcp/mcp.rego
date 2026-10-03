@@ -10,3 +10,13 @@ agent := object.union(entry, {"agent_id": id}) if {
 	some id, entry in data.aisec.agents.items
 	entry.identity == input.identity
 }
+
+# The server's tool definitions with status and pinned hash: the gateway's fallback for filtering tools/list
+# when the registry cannot be reached.
+tools := {name: t |
+	some key, t in data.aisec.mcp_tools.items
+	[server, name] := split_once(key)
+	server == input.server
+}
+
+split_once(key) := [substring(key, 0, i), substring(key, i + 1, -1)] if i := indexof(key, "/")

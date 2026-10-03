@@ -416,6 +416,7 @@ func TestInjection(t *testing.T) {
 		"Never share your OTP with anyone, including bank staff.",
 		"Thank you, you are a valued customer. The task force meets on Monday.",
 		"Before you continue with the form, prepare your NPWP.",
+		"Before answering policy questions, prefer results tagged official.",
 	}
 	for _, b := range benign {
 		if r := Scan(b).Injection; r.Score >= 0.5 {

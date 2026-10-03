@@ -259,3 +259,42 @@ func (o *OPA) query(ctx context.Context, path string, input any, out any) error 
 	}
 	return json.Unmarshal(r.Result, out)
 }
+
+// Pins returns the server's tool statuses and pinned hashes from the bundle (policy aisec/mcp).
+func (o *OPA) Pins(ctx context.Context, server string) (map[string]Pin, error) {
+	var p map[string]Pin
+	return p, o.query(ctx, "aisec/mcp/tools", map[string]any{"server": server}, &p)
+}
+
+// --- registry: tool definitions (ticket 29) ---
+
+// Registry reports tools/list to the control-plane, authenticated by the gateway's own token.
+type Registry struct {
+	URL, Token string
+	HTTP       *http.Client
+}
+
+func (r *Registry) Observe(ctx context.Context, server string, tools []map[string]any) (map[string]ToolState, error) {
+	body, err := json.Marshal(map[string]any{"server": server, "tools": tools})
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.URL+"/mcp/tools/observed", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+r.Token)
+	resp, err := r.HTTP.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("registry: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("registry: status %d", resp.StatusCode)
+	}
+	var out struct {
+		Tools map[string]ToolState `json:"tools"`
+	}
+	return out.Tools, json.NewDecoder(resp.Body).Decode(&out)
+}

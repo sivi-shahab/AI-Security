@@ -21,6 +21,17 @@
       "reason": "TOOL_NOT_ALLOWED"
     },
     {
+      "id": "tpl.mcp-tool-not-approved",
+      "description": "FR-AGT-3: tool MCP yang definisinya belum/tidak di-approve, atau berubah sejak di-pin (rug pull), = block sampai di-approve ulang.",
+      "when": [
+        {"field": "direction", "op": "eq", "value": "tool_call"},
+        {"field": "agent.mcp_server", "op": "neq", "value": null},
+        {"field": "agent.tool_approved", "op": "eq", "value": false}
+      ],
+      "action": "block",
+      "reason": "TOOL_NOT_APPROVED"
+    },
+    {
       "id": "tpl.tool-scope-violation",
       "description": "FR-AGT-4: argumen tool call di luar scope parameter registry (mis. amount > max, recipient di luar allow-list) = block.",
       "when": [

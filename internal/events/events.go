@@ -70,6 +70,8 @@ type Event struct {
 	ScopeViolations     *int     `json:"scope_violations,omitempty"`
 	RateExceeded        *bool    `json:"rate_exceeded,omitempty"`
 	ChainDepth          *int     `json:"chain_depth,omitempty"`
+	MCPServer           string   `json:"mcp_server,omitempty"`
+	ToolHash            string   `json:"tool_hash,omitempty"`
 }
 
 // PDPInput rebuilds the canonical PDP input (policy/aisec/schema) from the event's metadata. ok is false when the
@@ -139,6 +141,8 @@ func (e Event) PDPInput() (in map[string]any, ok bool) {
 		put(agent, "scope_violations", e.ScopeViolations)
 		put(agent, "rate_exceeded", e.RateExceeded)
 		put(agent, "chain_depth", e.ChainDepth)
+		put(agent, "mcp_server", e.MCPServer)
+		put(agent, "tool_hash", e.ToolHash)
 		in["agent"] = agent
 	}
 	return in, true

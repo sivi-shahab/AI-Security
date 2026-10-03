@@ -45,7 +45,7 @@ PEP untuk agent → tool.
 - **Utility saat diserang** rendah (16%) karena hasil ber-injection diblok utuh. Alternatif: redaksi/spotlighting span evidence (FR-PSEC-8) agar task tetap jalan; perlu kebijakan "redact injection" dan uji ulang ASR.
 - Gaya stealth (instruksi tanpa menyapa AI) di dalam scope lolos: butuh classifier L2 (tiket 10) dan/atau HITL untuk tool high (tiket 30).
 - HITL approval (tiket 30): `require_approval` saat ini deny. Kill switch ≤ 10 detik (tiket 30).
-- Scan tool description / rug-pull pada `tools/list` (tiket 29); filter `tools/list` ke allow-list.
+- ~~Scan tool description / rug-pull pada `tools/list`~~ (tiket 29: selesai); filter `tools/list` ke allow-list agent belum.
 - Permintaan server→client (sampling/elicitation) di stream belum diinspeksi; `resources/read` belum dibatasi allow-list.
 - Rate limit dan taint disimpan di memori per replika (deploy 1 replika); butuh store bersama untuk HA. Kegagalan kirim event hanya di-log (belum ada spool lokal).
 - Keycloak: client `mcp-gateway` dengan izin token exchange per audience tool server, audience mapper resource URI untuk client agent, dan "Consent Required" untuk client yang bertindak atas nama user, sebagai realm-as-code bersama tim IAM.

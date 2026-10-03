@@ -389,3 +389,41 @@ test_mcp_lookup_by_workload_identity if {
 	a.tools[1].scopes.amount.max == 25000000
 	not mcp.agent with input as {"identity": "unknown"} with data.aisec.agents as agents
 }
+
+# --- ticket 29: MCP tool definitions pinned and re-approved on change -----------------------------------------
+
+pin := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+mcp_tools := {"version": 3, "items": {
+	"erp/erp.read": {"status": "approved", "hash": pin},
+	"erp/payments.transfer": {"status": "under_review", "hash": pin},
+	"hr/erp.read": {"status": "rejected", "hash": ""},
+}}
+
+mcp_call(server, tool, hash) := agent_call("invoice-bot", object.union({"tool": tool, "mcp_server": server}, {"tool_hash": hash | hash != ""}))
+
+test_mcp_tool_must_be_approved_and_unchanged if {
+	ok := decision.result with input as mcp_call("erp", "erp.read", pin) with data.aisec.agents as agents with data.aisec.mcp_tools as mcp_tools
+	ok.action == "allow"
+	# The gateway did not see tools/list on this replica: the approved status alone decides.
+	unseen := decision.result with input as mcp_call("erp", "erp.read", "") with data.aisec.agents as agents with data.aisec.mcp_tools as mcp_tools
+	unseen.action == "allow"
+	every inp in [
+		mcp_call("erp", "erp.read", concat("", ["b", substring(pin, 1, -1)])), # rug pull: served definition is not the pin
+		mcp_call("erp", "payments.transfer", pin), # changed earlier, waiting for re-approval
+		mcp_call("hr", "erp.read", ""), # rejected
+		mcp_call("crm", "erp.read", ""), # never seen
+	] {
+		r := decision.result with input as inp with data.aisec.agents as agents with data.aisec.mcp_tools as mcp_tools
+		r.action == "block"
+		"TOOL_NOT_APPROVED" in r.reason_codes
+	}
+	# Tool calls outside the MCP gateway (no mcp_server) are not subject to definition pins.
+	other := decision.result with input as agent_call("invoice-bot", {}) with data.aisec.agents as agents with data.aisec.mcp_tools as mcp_tools
+	other.action == "allow"
+}
+
+test_mcp_tools_for_gateway_fallback if {
+	ts := mcp.tools with input as {"server": "erp"} with data.aisec.mcp_tools as mcp_tools
+	ts == {"erp.read": {"status": "approved", "hash": pin}, "payments.transfer": {"status": "under_review", "hash": pin}}
+}

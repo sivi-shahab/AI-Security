@@ -17,6 +17,7 @@ import (
 // handler, only the router's authentication and authorization.
 type deps struct {
 	bundles, scim, metrics http.Handler
+	mcpObserved            http.Handler // MCP gateway reports tools/list (own token)
 	incidents              *incident.Store
 	identity               *identity.Store
 	policies               *lifecycle.Store
@@ -36,6 +37,7 @@ func routes(rt *authz.Router, d deps) {
 	for _, m := range []string{"GET", "POST", "PUT", "PATCH", "DELETE"} {
 		rt.Public(m+" /scim/v2/", d.scim) // IdP provisioning client, own bearer token
 	}
+	rt.Public("POST /mcp/tools/observed", d.mcpObserved) // MCP gateway, own bearer token (ticket 29)
 	incident.Routes(rt, d.incidents, time.Now)
 	identity.Routes(rt, d.identity)
 	lifecycle.Routes(rt, d.policies, d.simulator, time.Now)

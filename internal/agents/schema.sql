@@ -35,3 +35,23 @@ CREATE TABLE IF NOT EXISTS agents.discovered (
   decided_at  timestamptz,
   note        text
 );
+
+-- MCP tool definitions as tools/list returns them (FR-AGT-3, ticket 29). hash is the latest definition seen,
+-- approved_hash the pinned one: a tool is callable only while they match and status is approved.
+CREATE TABLE IF NOT EXISTS agents.mcp_tools (
+  server         text        NOT NULL,
+  name           text        NOT NULL,
+  hash           text        NOT NULL,
+  definition     jsonb       NOT NULL,
+  risk           text        NOT NULL CHECK (risk IN ('low', 'medium', 'high')),
+  score          real        NOT NULL,
+  signals        text[]      NOT NULL DEFAULT '{}',
+  status         text        NOT NULL CHECK (status IN ('approved', 'under_review', 'rejected')),
+  approved_hash  text,
+  first_seen     timestamptz NOT NULL,
+  last_seen      timestamptz NOT NULL,
+  decided_by     text,
+  decided_at     timestamptz,
+  note           text,
+  PRIMARY KEY (server, name)
+);

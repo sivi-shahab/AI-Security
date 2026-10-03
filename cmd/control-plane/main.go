@@ -33,7 +33,8 @@ import (
 
 // Env: BUNDLE_SIGNING_KEY_FILE, DATABASE_URL, INCIDENT_KEK_FILE (32 raw bytes), KAFKA_BROKERS, SCHEMA_REGISTRY_URL,
 // TENANT_ID, PUBLIC_URL, CATALOG_FEED_URL + CATALOG_FEED_PUBKEY_FILE (signed app catalog feed), OPENSEARCH_URL/USER/PASSWORD (policy simulation reads stored events), and identity (ADR-0002): OIDC_ISSUER, OIDC_AUDIENCE, OIDC_MFA_ACR (comma-separated acr
-// values that mean MFA), BREAK_GLASS_SUBS (comma-separated token subs), SCIM_TOKEN_SHA256 (hex).
+// values that mean MFA), BREAK_GLASS_SUBS (comma-separated token subs), SCIM_TOKEN_SHA256 (hex),
+// MCP_GATEWAY_TOKEN_SHA256 (hex; the MCP gateway reporting tools/list, ticket 29).
 func main() {
 	// `control-plane audit anchor|verify ...`: run by the audit-anchor CronJob or via kubectl exec.
 	if len(os.Args) > 1 && os.Args[1] == "audit" {
@@ -153,6 +154,10 @@ func main() {
 	if err != nil || len(scimHash) != sha256.Size {
 		fail("SCIM_TOKEN_SHA256 must be a hex SHA-256", err)
 	}
+	mcpHash, err := hex.DecodeString(os.Getenv("MCP_GATEWAY_TOKEN_SHA256"))
+	if err != nil || len(mcpHash) != sha256.Size {
+		fail("MCP_GATEWAY_TOKEN_SHA256 must be a hex SHA-256", err)
+	}
 	breakGlass := map[string]bool{}
 	for _, sub := range strings.Split(os.Getenv("BREAK_GLASS_SUBS"), ",") {
 		if sub = strings.TrimSpace(sub); sub != "" {
@@ -201,7 +206,7 @@ func main() {
 		}
 	}()
 
-	routes(rt, deps{bundles: bundles, scim: ids.SCIMHandler(scimHash, os.Getenv("PUBLIC_URL")), metrics: metrics, incidents: incidents, identity: ids,
+	routes(rt, deps{bundles: bundles, scim: ids.SCIMHandler(scimHash, os.Getenv("PUBLIC_URL")), metrics: metrics, mcpObserved: registry.ObservedHandler(mcpHash, time.Now), incidents: incidents, identity: ids,
 		policies: policies, simulator: simulator, apps: apps, feedKey: feedKey,
 		posture: posture.Sources{Search: search.Search, Apps: apps, Incidents: incidents, Policies: policies, Agents: registry},
 		agents:  registry})

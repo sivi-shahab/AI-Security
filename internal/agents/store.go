@@ -207,7 +207,11 @@ func (s *Store) releaseDoc(ctx context.Context, tx pgx.Tx) (policysvc.Overrides,
 	for _, a := range as {
 		items[a.ID] = map[string]any{"status": a.Status, "risk_tier": a.RiskTier, "identity": a.Identity.Ref, "tools": a.Tools}
 	}
-	return policysvc.Overrides{"aisec.agents": map[string]any{"version": len(as), "items": items}}, nil
+	tools, err := toolsDoc(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	return policysvc.Overrides{"aisec.agents": map[string]any{"version": len(as), "items": items}, "aisec.mcp_tools": tools}, nil
 }
 
 // settle decides the status an entry may have: without an active owner it is quarantined, whatever was asked.

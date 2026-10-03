@@ -26,7 +26,7 @@ func TestRouteMatrix(t *testing.T) {
 	users["break_glass"] = authztest.User{BreakGlass: true}
 	a, _ := authztest.New(users, now, nil)
 	rt := authz.NewRouter(a)
-	routes(rt, deps{bundles: noop, scim: noop, metrics: noop})
+	routes(rt, deps{bundles: noop, scim: noop, metrics: noop, mcpObserved: noop})
 
 	// The unauthenticated surface is pinned: adding to it must be a deliberate change here.
 	var public []string
@@ -37,7 +37,7 @@ func TestRouteMatrix(t *testing.T) {
 	}
 	sort.Strings(public)
 	wantPublic := []string{"DELETE /scim/v2/", "GET /bundles/aisec.tar.gz", "GET /metrics", "GET /scim/v2/",
-		"PATCH /scim/v2/", "POST /scim/v2/", "PUT /scim/v2/"}
+		"PATCH /scim/v2/", "POST /mcp/tools/observed", "POST /scim/v2/", "PUT /scim/v2/"}
 	if !slices.Equal(public, wantPublic) {
 		t.Errorf("public routes = %v, want %v", public, wantPublic)
 	}

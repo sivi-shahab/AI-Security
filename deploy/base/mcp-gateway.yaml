@@ -1,7 +1,8 @@
 # MCP gateway (spec §4.8 FR-AGT-3..5, §7.2): PEP between AI agents and MCP tool servers, with its own PDP sidecar.
 # Secret mcp-gateway (out of band): MCP_BASE_URL, OIDC_ISSUER, STS_CLIENT_ID, STS_CLIENT_SECRET (Keycloak client
 # allowed to do token exchange for each tool server's audience), KAFKA_BROKERS, SCHEMA_REGISTRY_URL, TENANT_ID,
-# TENANT_PEPPER. ConfigMap mcp-servers (out of band): servers.json, a list of
+# TENANT_PEPPER, CONTROL_PLANE_URL, MCP_GATEWAY_TOKEN (its SHA-256 is the control-plane's MCP_GATEWAY_TOKEN_SHA256).
+# ConfigMap mcp-servers (out of band): servers.json, a list of
 #   {"name", "upstream", "audience", "app_id", "sanction", "region"}; agents reach each at MCP_BASE_URL/mcp/<name>.
 apiVersion: apps/v1
 kind: Deployment

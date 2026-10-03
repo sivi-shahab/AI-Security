@@ -119,4 +119,38 @@ func Routes(rt *authz.Router, s *Store, now func() time.Time) {
 		}
 		reply(w, 200, a, err)
 	})
+
+	// MCP tool definitions (ticket 29): the risk report and the review queue are visible to agent readers;
+	// approving or rejecting a definition is a security configuration decision.
+	rt.Handle("GET /mcp/tools", authz.AgentRead, func(w http.ResponseWriter, r *http.Request, _ authz.Caller) {
+		ts, err := s.Tools(r.Context(), r.URL.Query().Get("server"), r.URL.Query().Get("status"))
+		reply(w, 200, ts, err)
+	})
+	rt.Handle("GET /mcp/tools/report", authz.AgentRead, func(w http.ResponseWriter, r *http.Request, _ authz.Caller) {
+		rep, err := s.ToolReport(r.Context())
+		reply(w, 200, rep, err)
+	})
+	rt.Handle("POST /mcp/tools/{server}/{name}/approve", authz.ConfigWrite, func(w http.ResponseWriter, r *http.Request, c authz.Caller) {
+		var b struct {
+			Hash string `json:"hash"`
+			Note string `json:"note"`
+		}
+		if err := decode(r, &b); err != nil {
+			reply(w, 0, nil, err)
+			return
+		}
+		t, err := s.ApproveTool(r.Context(), c.Username, r.PathValue("server"), r.PathValue("name"), b.Hash, b.Note)
+		reply(w, 200, t, err)
+	})
+	rt.Handle("POST /mcp/tools/{server}/{name}/reject", authz.ConfigWrite, func(w http.ResponseWriter, r *http.Request, c authz.Caller) {
+		var b struct {
+			Note string `json:"note"`
+		}
+		if err := decode(r, &b); err != nil {
+			reply(w, 0, nil, err)
+			return
+		}
+		t, err := s.RejectTool(r.Context(), c.Username, r.PathValue("server"), r.PathValue("name"), b.Note)
+		reply(w, 200, t, err)
+	})
 }
