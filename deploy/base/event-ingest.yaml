@@ -1,0 +1,45 @@
+# Event ingest (spec §5.1): Kafka -> OpenSearch. Replicas share the topic's partitions via the consumer group.
+# Secret event-ingest (out of band): KAFKA_BROKERS, SCHEMA_REGISTRY_URL, OPENSEARCH_URL, OPENSEARCH_USER, OPENSEARCH_PASSWORD.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: event-ingest
+  labels: {app: event-ingest}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: event-ingest}
+  template:
+    metadata:
+      labels: {app: event-ingest}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: event-ingest
+          image: registry.local/aisec/event-ingest:dev
+          imagePullPolicy: Always
+          envFrom: [{secretRef: {name: event-ingest}}]
+          ports: [{containerPort: 8080, name: http}]  # /healthz, /metrics
+          readinessProbe: {httpGet: {path: /healthz, port: http}}
+          livenessProbe: {httpGet: {path: /healthz, port: http}}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: "1", memory: 512Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: event-ingest
+  labels: {app: event-ingest}
+spec:
+  selector: {app: event-ingest}
+  ports: [{port: 80, targetPort: http, name: http}]

@@ -25,7 +25,7 @@ workflow:
 .services: &services
   parallel:
     matrix:
-      - SERVICE: [control-plane, ai-gateway, detection-svc]
+      - SERVICE: [control-plane, ai-gateway, detection-svc, event-ingest]
         DOCKERFILE: build/go.Dockerfile
       - SERVICE: model-inference
         DOCKERFILE: services/model-inference/Dockerfile
@@ -49,11 +49,37 @@ lint:python:
 test:go:
   stage: test
   image: $GO_IMAGE
-  # Audit log integration test (internal/audit): real Postgres + S3 object lock. It fails, not skips, under CI.
+  # Integration tests fail, not skip, under CI: audit log (Postgres + S3 object lock) and the event pipeline
+  # (Kafka + schema registry + OpenSearch, internal/ingest).
   services:
     - {name: "${MIRROR}postgres:17", alias: postgres}
     - {name: "${MIRROR}minio/minio:RELEASE.2024-06-13T22-53-53Z", alias: minio, command: [server, /data]}
+    - {name: "${MIRROR}apache/kafka:3.9.0", alias: kafka}
+    - {name: "${MIRROR}ghcr.io/aiven-open/karapace:5.0.3", alias: karapace, command: [python3, -m, karapace]}
+    - {name: "${MIRROR}opensearchproject/opensearch:2.19.3", alias: opensearch}
   variables:
+    FF_NETWORK_PER_BUILD: "true"  # services reach each other by alias (karapace -> kafka)
+    KAFKA_NODE_ID: "1"
+    KAFKA_PROCESS_ROLES: broker,controller
+    KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+    KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+    KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+    KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+    KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+    KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+    KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+    KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+    KARAPACE_BOOTSTRAP_URI: kafka:9092
+    KARAPACE_HOST: 0.0.0.0
+    KARAPACE_PORT: "8081"
+    KARAPACE_REPLICATION_FACTOR: "1"
+    discovery.type: single-node
+    DISABLE_SECURITY_PLUGIN: "true"
+    DISABLE_INSTALL_DEMO_CONFIG: "true"
+    OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+    IT_KAFKA_BROKERS: kafka:9092
+    IT_SCHEMA_REGISTRY_URL: http://karapace:8081
+    IT_OPENSEARCH_URL: http://opensearch:9200
     POSTGRES_PASSWORD: test
     MINIO_ROOT_USER: minio
     MINIO_ROOT_PASSWORD: minio-test-only

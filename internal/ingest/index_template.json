@@ -1,0 +1,30 @@
+{
+  "index_patterns": ["aisec-events-*"],
+  "template": {
+    "settings": {"index": {"refresh_interval": "5s"}},
+    "mappings": {
+      "dynamic": "strict",
+      "properties": {
+        "event_id": {"type": "keyword"},
+        "tenant_id": {"type": "keyword"},
+        "ts": {"type": "date"},
+        "trace_id": {"type": "keyword"},
+        "channel": {"type": "keyword"},
+        "direction": {"type": "keyword"},
+        "principal_id": {"type": "keyword"},
+        "app_id": {"type": "keyword"},
+        "agent_id": {"type": "keyword"},
+        "action": {"type": "keyword"},
+        "reason_codes": {"type": "keyword"},
+        "matched_rules": {"type": "keyword"},
+        "policy_version": {"type": "keyword"},
+        "risk_score": {"type": "integer"},
+        "risk_overrides": {"type": "keyword"},
+        "risk_version": {"type": "keyword"},
+        "classes": {"properties": {"type": {"type": "keyword"}, "count": {"type": "integer"}, "confidence": {"type": "float"}}},
+        "content_hash": {"type": "keyword"},
+        "snippet": {"type": "text"}
+      }
+    }
+  }
+}

@@ -39,3 +39,37 @@ spec:
           labels: {severity: critical, category: security}
           annotations:
             summary: No successful daily audit anchor in the last 26 hours
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: aisec-event-pipeline
+  namespace: aisec
+spec:
+  groups:
+    - name: event-pipeline
+      rules:
+        # A PEP put raw content (or an unredacted identifier) into an event: privacy bug at the source (spec §10.2).
+        - alert: EventsWithRawContent
+          expr: sum(increase(events_rejected_total{reason=~"raw_content|unredacted_snippet"}[5m])) > 0
+          labels: {severity: critical, category: security}
+          annotations:
+            summary: decision events carrying raw content were rejected; find the PEP emitting them
+        - alert: EventsRejected
+          expr: sum by (reason) (increase(events_rejected_total{reason!~"raw_content|unredacted_snippet"}[15m])) > 0
+          labels: {severity: warning}
+          annotations:
+            summary: "decision events rejected ({{ $labels.reason }}): PEP and schema out of step?"
+        - alert: EventIngestLagging
+          expr: sum(kafka_consumer_lag{group="event-ingest"}) > 10000
+          for: 10m
+          labels: {severity: warning}
+          annotations:
+            summary: event-ingest is falling behind; events may not be searchable within 60 s
+        # SLO: searchable <= 60 s p95; indexing delay plus the 5 s refresh_interval.
+        - alert: EventSearchSLOBreached
+          expr: histogram_quantile(0.95, sum by (le) (rate(event_index_delay_seconds_bucket[10m]))) > 55
+          for: 10m
+          labels: {severity: warning}
+          annotations:
+            summary: p95 produce-to-index delay above 55 s

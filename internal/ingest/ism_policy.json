@@ -1,0 +1,12 @@
+{
+  "policy": {
+    "description": "decision_event retention (spec §10.2): 90 days hot, then read-only, deleted at 400 days.",
+    "default_state": "hot",
+    "states": [
+      {"name": "hot", "actions": [], "transitions": [{"state_name": "warm", "conditions": {"min_index_age": "90d"}}]},
+      {"name": "warm", "actions": [{"read_only": {}}, {"force_merge": {"max_num_segments": 1}}], "transitions": [{"state_name": "delete", "conditions": {"min_index_age": "400d"}}]},
+      {"name": "delete", "actions": [{"delete": {}}], "transitions": []}
+    ],
+    "ism_template": [{"index_patterns": ["aisec-events-*"], "priority": 100}]
+  }
+}

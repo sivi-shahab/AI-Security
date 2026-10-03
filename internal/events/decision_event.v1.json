@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aisec/decision_event/v1",
+  "title": "decision_event v1 (spec §6 DECISION_EVENT, §10.2). Metadata, HMAC hashes and a redacted snippet only: never raw content.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["event_id", "tenant_id", "ts", "trace_id", "channel", "direction", "principal_id", "app_id", "action", "reason_codes", "policy_version", "risk_score", "risk_version", "classes", "content_hash"],
+  "properties": {
+    "event_id": {"type": "string", "format": "uuid"},
+    "tenant_id": {"type": "string", "format": "uuid"},
+    "ts": {"type": "string", "format": "date-time"},
+    "trace_id": {"type": "string", "pattern": "^[0-9a-f]{32}$", "description": "W3C trace id from the PEP, propagated to detection, OPA and here."},
+    "channel": {"enum": ["ai_gateway", "web_proxy", "browser_ext", "endpoint", "mcp_gateway", "connector"]},
+    "direction": {"enum": ["request", "response", "tool_call", "tool_result", "at_rest"]},
+    "principal_id": {"type": "string", "pattern": "^[0-9a-f]{64}$", "description": "HMAC-SHA256 with the tenant pepper (spec §10.2)."},
+    "app_id": {"type": "string", "minLength": 1},
+    "agent_id": {"type": "string", "minLength": 1},
+    "action": {"enum": ["block", "quarantine", "require_approval", "tokenize", "redact", "warn", "allow"]},
+    "reason_codes": {"type": "array", "items": {"type": "string"}},
+    "matched_rules": {"type": "array", "items": {"type": "string"}},
+    "policy_version": {"type": "string", "minLength": 1},
+    "risk_score": {"type": "integer", "minimum": 0, "maximum": 100},
+    "risk_overrides": {"type": "array", "items": {"type": "string"}},
+    "risk_version": {"type": "string", "minLength": 1},
+    "classes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "count"],
+        "properties": {
+          "type": {"type": "string", "pattern": "^(PII_ID|FIN|PCI|PHI|SECRET|CODE|LEGAL_HR|CUSTOM)\\.[A-Z0-9_]+$"},
+          "count": {"type": "integer", "minimum": 1},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+        }
+      }
+    },
+    "content_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$", "description": "HMAC-SHA256 of the content with the tenant pepper."},
+    "snippet": {"type": "string", "maxLength": 200, "description": "Already redacted by the PEP, e.g. 'NIK [REDACTED:PII_ID.NIK]'."}
+  }
+}

@@ -23,6 +23,9 @@ var forbidden = func() map[string]bool {
 	return m
 }()
 
+// IsForbidden reports whether a field name may never carry data into logs or events (case-insensitive).
+func IsForbidden(field string) bool { return forbidden[strings.ToLower(field)] }
+
 // Forbidden lists the field names (lowercase) that must never reach a log. OPA decision-log masking uses it too.
 func Forbidden() []string {
 	return slices.Sorted(maps.Keys(forbidden))
