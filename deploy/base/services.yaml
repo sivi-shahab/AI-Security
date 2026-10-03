@@ -24,13 +24,12 @@ spec:
           image: registry.local/aisec/control-plane:dev
           imagePullPolicy: Always
           ports: [{containerPort: 8080, name: http}]
-          # Secret control-plane (out of band): DATABASE_URL, KAFKA_BROKERS, SCHEMA_REGISTRY_URL.
+          # Secret control-plane (out of band): DATABASE_URL, KAFKA_BROKERS, SCHEMA_REGISTRY_URL, TENANT_ID, PUBLIC_URL,
+          # OIDC_ISSUER, OIDC_AUDIENCE, OIDC_MFA_ACR, BREAK_GLASS_SUBS, SCIM_TOKEN_SHA256 (ADR-0002).
           envFrom: [{secretRef: {name: control-plane}}]
           env:
             - {name: BUNDLE_SIGNING_KEY_FILE, value: /keys/bundle.key}
             - {name: INCIDENT_KEK_FILE, value: /kek/incident.kek}
-            # Only behind the authenticating proxy until SSO (ticket 06); anything else rejects every API call.
-            - {name: AUTH_MODE, value: trusted-proxy}
           volumeMounts:
             - {name: bundle-signing, mountPath: /keys, readOnly: true}
             - {name: incident-kek, mountPath: /kek, readOnly: true}

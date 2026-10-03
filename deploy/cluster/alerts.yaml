@@ -89,3 +89,19 @@ spec:
           labels: {severity: critical, category: security}
           annotations:
             summary: "{{ $value }} incident(s) past their acknowledge SLA"
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: aisec-identity
+  namespace: aisec
+spec:
+  groups:
+    - name: identity
+      rules:
+        # Spec §10.1: break-glass is audited; any use pages, so it is never quiet.
+        - alert: BreakGlassUsed
+          expr: sum(increase(breakglass_requests_total[5m])) > 0
+          labels: {severity: critical, category: security}
+          annotations:
+            summary: the break-glass account is in use; confirm the emergency and review the audit log

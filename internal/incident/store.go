@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"aisec/internal/audit"
+	"aisec/internal/authz"
 	"aisec/internal/events"
 )
 
@@ -321,27 +322,25 @@ func (s *Store) AddRawEvidence(ctx context.Context, id, kind string, raw []byte,
 	return eid, err
 }
 
-// MinJustification is the shortest justification accepted for unmask.
-const MinJustification = 10
-
-// Unmask decrypts raw evidence for a caller holding evidence.unmask with a justification. Every attempt, granted
-// or denied, is written to the audit log first (FR-INC-4, spec §12.3 telemetry).
-func (s *Store) Unmask(ctx context.Context, c Caller, id, eid, justification string) ([]byte, error) {
+// Unmask decrypts raw evidence (FR-INC-4). The router already demanded evidence.unmask, a fresh login and a
+// justification, and audited the access; this checks again (defence in depth, and for non-HTTP callers) and
+// writes the domain record naming the evidence, denied or granted, before any plaintext exists.
+func (s *Store) Unmask(ctx context.Context, c authz.Caller, id, eid, justification string, now time.Time) ([]byte, error) {
 	inc, err := s.Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 	reason := ""
 	switch {
-	case !c.Perms[PermUnmask]:
-		reason = "missing permission " + PermUnmask
-	case len(strings.TrimSpace(justification)) < MinJustification:
-		reason = fmt.Sprintf("justification shorter than %d characters", MinJustification)
+	case !c.Can(authz.EvidenceUnmask, authz.Resource{}, now):
+		reason = "missing permission " + authz.EvidenceUnmask
+	case len(strings.TrimSpace(justification)) < authz.MinJustification:
+		reason = fmt.Sprintf("justification shorter than %d characters", authz.MinJustification)
 	}
 	target := map[string]any{"incident": id, "evidence": eid, "justification": justification}
 	if reason != "" {
 		target["denied"] = reason
-		if _, err := s.audit.Append(ctx, inc.TenantID, c.ID, "evidence.unmask.denied", target); err != nil {
+		if _, err := s.audit.Append(ctx, inc.TenantID, c.Username, "evidence.unmask.denied", target); err != nil {
 			return nil, err
 		}
 		return nil, fmt.Errorf("%w: %s", ErrForbidden, reason)
@@ -353,7 +352,7 @@ func (s *Store) Unmask(ctx context.Context, c Caller, id, eid, justification str
 	} else if err != nil {
 		return nil, err
 	}
-	if _, err := s.audit.Append(ctx, inc.TenantID, c.ID, "evidence.unmask", target); err != nil {
+	if _, err := s.audit.Append(ctx, inc.TenantID, c.Username, "evidence.unmask", target); err != nil {
 		return nil, err // no audit record, no plaintext
 	}
 	dek, err := s.dek(ctx, id)

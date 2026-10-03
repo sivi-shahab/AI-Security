@@ -17,6 +17,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"aisec/internal/audit"
+	"aisec/internal/authz"
+	"aisec/internal/authz/authztest"
 	"aisec/internal/events"
 )
 
@@ -203,12 +205,12 @@ type api struct {
 	srv *httptest.Server
 }
 
-func (a api) do(method, path, user, perms, body string) (int, string) {
+// do calls the API as user (a token for authztest; "" = no token).
+func (a api) do(method, path, user, body string) (int, string) {
 	a.t.Helper()
 	req, _ := http.NewRequest(method, a.srv.URL+path, strings.NewReader(body))
 	if user != "" {
-		req.Header.Set("X-Aisec-User", user)
-		req.Header.Set("X-Aisec-Perms", perms)
+		req.Header.Set("Authorization", "Bearer "+user)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -223,9 +225,18 @@ func TestAPITransitionsAndUnmask(t *testing.T) {
 	s, al, db := setup(t)
 	ctx := context.Background()
 	t0 := time.Now().UTC().Truncate(time.Microsecond)
-	mux := http.NewServeMux()
-	Routes(mux, s, "trusted-proxy", time.Now)
-	a := api{t, httptest.NewServer(mux)}
+	auth, _ := authztest.New(map[string]authztest.User{
+		"soc1":   authztest.Role("soc_analyst"), // incidents read/write, no unmask
+		"ciso1":  authztest.Role("ciso"),        // incidents read only
+		"dpo1":   authztest.Role("dpo"),         // unmask
+		"nobody": {},
+	}, time.Now, func(ctx context.Context, actor, action string, target map[string]any) error {
+		_, err := al.Append(ctx, tenant, actor, action, target)
+		return err
+	})
+	rt := authz.NewRouter(auth)
+	Routes(rt, s, time.Now)
+	a := api{t, httptest.NewServer(rt)}
 	defer a.srv.Close()
 
 	e, raw := event("p1", t0, 92, "PII_ID.NIK")
@@ -235,47 +246,39 @@ func TestAPITransitionsAndUnmask(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Authentication is fail-closed outside trusted-proxy mode.
-	closed := http.NewServeMux()
-	Routes(closed, s, "", time.Now)
-	cs := httptest.NewServer(closed)
-	defer cs.Close()
-	if code, _ := (api{t, cs}).do("GET", "/incidents", "soc1", PermRead, ""); code != 401 {
-		t.Errorf("no auth mode: %d, want 401", code)
+	if code, _ := a.do("GET", "/incidents", "", ""); code != 401 {
+		t.Errorf("no token: %d", code)
 	}
-	if code, _ := a.do("GET", "/incidents", "", "", ""); code != 401 {
-		t.Errorf("no user: %d", code)
-	}
-	if code, _ := a.do("GET", "/incidents", "soc1", "", ""); code != 403 {
+	if code, _ := a.do("GET", "/incidents", "nobody", ""); code != 403 {
 		t.Errorf("no permission: %d", code)
 	}
-	if code, body := a.do("GET", "/incidents?severity=critical&state=New", "soc1", PermRead, ""); code != 200 || !strings.Contains(body, id) {
+	if code, body := a.do("GET", "/incidents?severity=critical&state=New", "ciso1", ""); code != 200 || !strings.Contains(body, id) {
 		t.Errorf("list: %d %s", code, body)
 	}
-	if code, body := a.do("GET", "/incidents/"+id, "soc1", PermRead, ""); code != 200 || strings.Contains(body, "3171234567890001") || !strings.Contains(body, eid) {
+	if code, body := a.do("GET", "/incidents/"+id, "soc1", ""); code != 200 || strings.Contains(body, "3171234567890001") || !strings.Contains(body, eid) {
 		t.Errorf("detail must list evidence without revealing it: %d %s", code, body)
 	}
 
 	// Transitions: valid, invalid, labelled-without-note, without write permission.
 	steps := []struct {
-		to, note, perms string
-		want            int
+		to, note, user string
+		want           int
 	}{
-		{"Investigating", "", PermWrite, 409}, // New -> Investigating skips Triaged
-		{"Triaged", "", PermRead, 403},
-		{"Triaged", "", PermWrite, 200},
-		{"Closed", "", PermWrite, 409}, // duplicate needs a note
-		{"Investigating", "", PermWrite, 200},
-		{"Resolved", "benign", PermWrite, 200},
-		{"Contained", "", PermWrite, 409},
-		{"Investigating", "reopen: new evidence", PermWrite, 200},
-		{"Contained", "", PermWrite, 200},
-		{"Resolved", "", PermWrite, 200},
-		{"Closed", "", PermWrite, 200},
-		{"Triaged", "", PermWrite, 409}, // Closed is final
+		{"Investigating", "", "soc1", 409}, // New -> Investigating skips Triaged
+		{"Triaged", "", "ciso1", 403},      // read-only role
+		{"Triaged", "", "soc1", 200},
+		{"Closed", "", "soc1", 409}, // duplicate needs a note
+		{"Investigating", "", "soc1", 200},
+		{"Resolved", "benign", "soc1", 200},
+		{"Contained", "", "soc1", 409},
+		{"Investigating", "reopen: new evidence", "soc1", 200},
+		{"Contained", "", "soc1", 200},
+		{"Resolved", "", "soc1", 200},
+		{"Closed", "", "soc1", 200},
+		{"Triaged", "", "soc1", 409}, // Closed is final
 	}
 	for i, st := range steps {
-		code, body := a.do("POST", "/incidents/"+id+"/transition", "soc1", st.perms, fmt.Sprintf(`{"to": %q, "note": %q}`, st.to, st.note))
+		code, body := a.do("POST", "/incidents/"+id+"/transition", st.user, fmt.Sprintf(`{"to": %q, "note": %q}`, st.to, st.note))
 		if code != st.want {
 			t.Errorf("step %d -> %s: %d %s, want %d", i, st.to, code, body, st.want)
 		}
@@ -286,17 +289,17 @@ func TestAPITransitionsAndUnmask(t *testing.T) {
 	}
 
 	// Unmask: denied without permission or justification (and recorded), granted with both (and recorded).
-	path := "/incidents/" + id + "/evidence/" + eid + "?unmask=true&justification="
-	if code, _ := a.do("GET", path+neturl.QueryEscape("investigating incident"), "soc1", PermRead, ""); code != 403 {
+	path := "/incidents/" + id + "/evidence/" + eid + "/raw?justification="
+	if code, _ := a.do("GET", path+neturl.QueryEscape("investigating incident"), "soc1", ""); code != 403 {
 		t.Errorf("unmask without permission: %d", code)
 	}
-	if code, _ := a.do("GET", path+"x", "dpo1", PermUnmask, ""); code != 403 {
+	if code, _ := a.do("GET", path+"x", "dpo1", ""); code != 403 {
 		t.Errorf("unmask without justification: %d", code)
 	}
-	if code, body := a.do("GET", path+neturl.QueryEscape("UU PDP breach assessment INC-7"), "dpo1", PermUnmask, ""); code != 200 || body != "NIK saya 3171234567890001" {
+	if code, body := a.do("GET", path+neturl.QueryEscape("UU PDP breach assessment INC-7"), "dpo1", ""); code != 200 || body != "NIK saya 3171234567890001" {
 		t.Errorf("unmask granted: %d %q", code, body)
 	}
-	if code, body := a.do("GET", "/incidents/"+id+"/evidence/"+eid, "soc1", PermRead, ""); code != 200 || strings.Contains(body, "3171") {
+	if code, body := a.do("GET", "/incidents/"+id+"/evidence/"+eid, "soc1", ""); code != 200 || strings.Contains(body, "3171") {
 		t.Errorf("metadata view: %d %s", code, body)
 	}
 
@@ -307,10 +310,11 @@ func TestAPITransitionsAndUnmask(t *testing.T) {
 		_ = rows.Scan(&s)
 		actions = append(actions, s)
 	}
-	want := []string{"soc1:evidence.unmask.denied", "dpo1:evidence.unmask.denied", "dpo1:evidence.unmask"}
+	// The router records every attempt; the store adds the grant naming the evidence before decrypting.
+	want := []string{"soc1:access.sensitive.denied", "dpo1:access.sensitive.denied", "dpo1:access.sensitive", "dpo1:evidence.unmask"}
 	got := []string{}
 	for _, a := range actions {
-		if strings.Contains(a, "unmask") {
+		if strings.Contains(a, "unmask") || strings.Contains(a, "access.sensitive") {
 			got = append(got, a)
 		}
 	}

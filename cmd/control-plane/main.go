@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -13,7 +16,9 @@ import (
 	"github.com/twmb/franz-go/pkg/sr"
 
 	"aisec/internal/audit"
+	"aisec/internal/authz"
 	"aisec/internal/events"
+	"aisec/internal/identity"
 	"aisec/internal/incident"
 	"aisec/internal/policysvc"
 	"aisec/internal/privacy"
@@ -22,7 +27,8 @@ import (
 )
 
 // Env: BUNDLE_SIGNING_KEY_FILE, DATABASE_URL, INCIDENT_KEK_FILE (32 raw bytes), KAFKA_BROKERS, SCHEMA_REGISTRY_URL,
-// AUTH_MODE (only "trusted-proxy" admits API calls until SSO lands, see internal/incident/api.go).
+// TENANT_ID, PUBLIC_URL, and identity (ADR-0002): OIDC_ISSUER, OIDC_AUDIENCE, OIDC_MFA_ACR (comma-separated acr
+// values that mean MFA), BREAK_GLASS_SUBS (comma-separated token subs), SCIM_TOKEN_SHA256 (hex).
 func main() {
 	// `control-plane audit anchor|verify ...`: run by the audit-anchor CronJob or via kubectl exec.
 	if len(os.Args) > 1 && os.Args[1] == "audit" {
@@ -89,10 +95,41 @@ func main() {
 		}
 	}()
 
-	mux := http.NewServeMux()
-	mux.Handle("GET /bundles/aisec.tar.gz", bundles)
-	incident.Routes(mux, incidents, os.Getenv("AUTH_MODE"), time.Now)
-	mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, r *http.Request) {
+	ids, err := identity.Open(ctx, db, os.Getenv("TENANT_ID"))
+	if err != nil {
+		fail("identity store", err)
+	}
+	verify, err := authz.KeycloakVerifier(ctx, os.Getenv("OIDC_ISSUER"), os.Getenv("OIDC_AUDIENCE"))
+	if err != nil {
+		fail("oidc issuer", err)
+	}
+	scimHash, err := hex.DecodeString(os.Getenv("SCIM_TOKEN_SHA256"))
+	if err != nil || len(scimHash) != sha256.Size {
+		fail("SCIM_TOKEN_SHA256 must be a hex SHA-256", err)
+	}
+	breakGlass := map[string]bool{}
+	for _, sub := range strings.Split(os.Getenv("BREAK_GLASS_SUBS"), ",") {
+		if sub = strings.TrimSpace(sub); sub != "" {
+			breakGlass[sub] = true
+		}
+	}
+	var breakGlassRequests atomic.Int64
+	rt := authz.NewRouter(&authz.Authenticator{
+		Verify:     verify,
+		MFAACR:     strings.Split(os.Getenv("OIDC_MFA_ACR"), ","),
+		BreakGlass: breakGlass,
+		Bindings:   ids.Bindings,
+		Audit: func(ctx context.Context, actor, action string, target map[string]any) error {
+			if action == "breakglass.request" {
+				breakGlassRequests.Add(1)
+			}
+			_, err := auditLog.Append(ctx, os.Getenv("TENANT_ID"), actor, action, target)
+			return err
+		},
+		StepUpAge: 5 * time.Minute,
+		Now:       time.Now,
+	})
+	metrics := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		n, err := incidents.Overdue(r.Context(), time.Now())
 		if err != nil {
 			http.Error(w, "metrics unavailable", http.StatusServiceUnavailable)
@@ -100,8 +137,10 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 		_, _ = fmt.Fprintf(w, "# TYPE incident_ack_overdue gauge\nincident_ack_overdue %d\n", n)
+		_, _ = fmt.Fprintf(w, "# TYPE breakglass_requests_total counter\nbreakglass_requests_total %d\n", breakGlassRequests.Load())
 	})
-	server.Run("control-plane", mux)
+	routes(rt, deps{bundles: bundles, scim: ids.SCIMHandler(scimHash, os.Getenv("PUBLIC_URL")), metrics: metrics, incidents: incidents, identity: ids})
+	server.Run("control-plane", rt.Mux)
 	cancel()
 	kc.Close()
 }

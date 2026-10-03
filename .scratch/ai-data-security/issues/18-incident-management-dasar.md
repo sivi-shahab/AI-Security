@@ -36,7 +36,7 @@ SOC butuh tempat triage.
 - E2E image control-plane + Kafka + Karapace + Postgres: 3 event (risk 72, 95, 50) → satu incident critical, 3 event, ack deadline; event risk 10 diabaikan.
 
 ## Sisa / follow-up
-- SSO/RBAC dan re-auth untuk `evidence.unmask` (ticket 06) menggantikan header proxy.
+- ~~SSO/RBAC dan re-auth untuk `evidence.unmask` (ticket 06) menggantikan header proxy.~~ Selesai di ticket 06; raw evidence sekarang di `…/evidence/{eid}/raw`.
 - Belum ada pemanggil `AddRawEvidence`: PEP dengan forensic_capture (ticket 13). Pindah ciphertext ke object storage bila volumenya besar.
 - KEK dari KMS/HSM; Secret `control-plane` dan `incident-kek` di-provision di luar git.
 - Topic Kafka dibuat oleh tim platform (client tidak auto-create).
