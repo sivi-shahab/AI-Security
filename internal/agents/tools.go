@@ -256,9 +256,61 @@ func toolsDoc(ctx context.Context, tx pgx.Tx) (map[string]any, error) {
 	return map[string]any{"version": len(ts), "items": items}, nil
 }
 
-// ObservedHandler is POST /mcp/tools/observed for the MCP gateway, authenticated by its own bearer token (stored
-// as SHA-256, like SCIM): {"server", "tools": [tool definitions]} → {"tools": {name: {status, callable}}}.
-func (s *Store) ObservedHandler(tokenSHA256 []byte, now func() time.Time) http.Handler {
+// GatewayHandler serves the MCP gateway, authenticated by its own bearer token (stored as SHA-256, like SCIM):
+//
+//	POST /mcp/tools/observed    {"server", "tools": [definitions]} → {"tools": {name: {status, callable}}}
+//	POST /mcp/approvals/request {agent_id, server, tool, args_digest, preview, reason_codes, trace_id} → Approval
+//	POST /mcp/approvals/claim   {agent_id, server, tool, args_digest} → {"approval_id"} or 404
+func (s *Store) GatewayHandler(tokenSHA256 []byte, now func() time.Time) http.Handler {
+	mux := http.NewServeMux()
+	reply := func(w http.ResponseWriter, v any, err error) {
+		switch {
+		case errors.Is(err, ErrInvalid):
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		case errors.Is(err, ErrNotFound):
+			http.Error(w, "not found", http.StatusNotFound)
+		case err != nil:
+			http.Error(w, "internal error", http.StatusInternalServerError)
+		default:
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(v)
+		}
+	}
+	decode := func(w http.ResponseWriter, r *http.Request, v any) bool {
+		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<20)).Decode(v) != nil {
+			http.Error(w, "invalid body", http.StatusBadRequest)
+			return false
+		}
+		return true
+	}
+	mux.HandleFunc("POST /mcp/tools/observed", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Server string           `json:"server"`
+			Tools  []map[string]any `json:"tools"`
+		}
+		if decode(w, r, &body) {
+			states, err := s.Observe(r.Context(), body.Server, body.Tools, now())
+			reply(w, map[string]any{"tools": states}, err)
+		}
+	})
+	mux.HandleFunc("POST /mcp/approvals/request", func(w http.ResponseWriter, r *http.Request) {
+		var a Approval
+		if decode(w, r, &a) {
+			a, err := s.RequestApproval(r.Context(), a, now())
+			reply(w, a, err)
+		}
+	})
+	mux.HandleFunc("POST /mcp/approvals/claim", func(w http.ResponseWriter, r *http.Request) {
+		var a Approval
+		if !decode(w, r, &a) {
+			return
+		}
+		id, ok, err := s.ClaimApproval(r.Context(), a.AgentID, a.Server, a.Tool, a.ArgsDigest, now())
+		if err == nil && !ok {
+			err = ErrNotFound
+		}
+		reply(w, map[string]any{"approval_id": id}, err)
+	})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		raw, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 		got := sha256.Sum256([]byte(raw))
@@ -266,24 +318,6 @@ func (s *Store) ObservedHandler(tokenSHA256 []byte, now func() time.Time) http.H
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		var body struct {
-			Server string           `json:"server"`
-			Tools  []map[string]any `json:"tools"`
-		}
-		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<20)).Decode(&body) != nil {
-			http.Error(w, "invalid body", http.StatusBadRequest)
-			return
-		}
-		states, err := s.Observe(r.Context(), body.Server, body.Tools, now())
-		if errors.Is(err, ErrInvalid) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		if err != nil {
-			http.Error(w, "observe failed", http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"tools": states})
+		mux.ServeHTTP(w, r)
 	})
 }

@@ -133,13 +133,16 @@ type Store struct {
 	db       *pgxpool.Pool
 	tenant   string
 	policies *lifecycle.Store
+
+	ApprovalTTL time.Duration  // HITL request lifetime (DefaultApprovalTTL)
+	Notify      func(Approval) // tells approvers about a new request; nil = none
 }
 
 func Open(ctx context.Context, db *pgxpool.Pool, tenant string, policies *lifecycle.Store) (*Store, error) {
 	if _, err := db.Exec(ctx, schemaSQL); err != nil {
 		return nil, fmt.Errorf("apply agents schema: %w", err)
 	}
-	s := &Store{db: db, tenant: tenant, policies: policies}
+	s := &Store{db: db, tenant: tenant, policies: policies, ApprovalTTL: DefaultApprovalTTL}
 	policies.AddExtra(s.releaseDoc)
 	return s, nil
 }
@@ -211,7 +214,11 @@ func (s *Store) releaseDoc(ctx context.Context, tx pgx.Tx) (policysvc.Overrides,
 	if err != nil {
 		return nil, err
 	}
-	return policysvc.Overrides{"aisec.agents": map[string]any{"version": len(as), "items": items}, "aisec.mcp_tools": tools}, nil
+	kills, err := killsDoc(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	return policysvc.Overrides{"aisec.agents": map[string]any{"version": len(as), "items": items}, "aisec.mcp_tools": tools, "aisec.kills": kills}, nil
 }
 
 // settle decides the status an entry may have: without an active owner it is quarantined, whatever was asked.

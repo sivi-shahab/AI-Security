@@ -85,6 +85,14 @@ exempted contains r if {
 	}
 }
 
+# FR-AGT-6: an approval granted by a human (claimed once by the MCP gateway for exactly this call) lifts the
+# require_approval rules of this decision only; stricter rules still apply.
+exempted contains r if {
+	some r in matched
+	r.action == "require_approval"
+	input.agent.approval_granted == true
+}
+
 in_scope("principal_id", v) if input.principal.id == v
 
 in_scope("group", v) if v in object.get(input.principal, "groups", [])

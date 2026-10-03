@@ -140,13 +140,13 @@ func TestToolPinning(t *testing.T) {
 	}
 }
 
-func TestObservedHandler(t *testing.T) {
+func TestGatewayHandlerObserve(t *testing.T) {
 	s, _, _ := setup(t)
 	sum := sha256.Sum256([]byte("gw-token"))
-	srv := httptest.NewServer(s.ObservedHandler(sum[:], time.Now))
+	srv := httptest.NewServer(s.GatewayHandler(sum[:], time.Now))
 	defer srv.Close()
 	post := func(token, body string) (int, string) {
-		req, _ := http.NewRequest(http.MethodPost, srv.URL, strings.NewReader(body))
+		req, _ := http.NewRequest(http.MethodPost, srv.URL+"/mcp/tools/observed", strings.NewReader(body))
 		req.Header.Set("Authorization", "Bearer "+token)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {

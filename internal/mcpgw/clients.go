@@ -173,6 +173,13 @@ func (s *STS) Exchange(ctx context.Context, subject, audience string) (string, e
 	return out.AccessToken, nil
 }
 
+// Purge forgets every cached downstream token (a kill switch changed): the next request exchanges afresh.
+func (s *STS) Purge() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.cache = nil
+}
+
 // --- PDP: the OPA sidecar ---
 
 // OPA asks the pod-local OPA sidecar (spec FR-POL-1) for registry lookups and decisions.
@@ -275,26 +282,62 @@ type Registry struct {
 }
 
 func (r *Registry) Observe(ctx context.Context, server string, tools []map[string]any) (map[string]ToolState, error) {
-	body, err := json.Marshal(map[string]any{"server": server, "tools": tools})
-	if err != nil {
-		return nil, err
+	var out struct {
+		Tools map[string]ToolState `json:"tools"`
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.URL+"/mcp/tools/observed", bytes.NewReader(body))
+	_, err := r.post(ctx, "/mcp/tools/observed", map[string]any{"server": server, "tools": tools}, &out)
+	return out.Tools, err
+}
+
+// Kills reads the active kill switches from the bundle.
+func (o *OPA) Kills(ctx context.Context) (KillSet, error) {
+	var k *KillSet
+	if err := o.query(ctx, "aisec/kills", nil, &k); err != nil {
+		return KillSet{}, err
+	}
+	if k == nil {
+		return KillSet{}, errors.New("PDP has no kill switch data")
+	}
+	return *k, nil
+}
+
+// Claim uses an approved, unexpired approval of exactly this call (control-plane, ticket 30).
+func (r *Registry) Claim(ctx context.Context, key ApprovalKey) (string, bool, error) {
+	var out struct {
+		ID string `json:"approval_id"`
+	}
+	status, err := r.post(ctx, "/mcp/approvals/claim", key, &out)
+	if status == http.StatusNotFound {
+		return "", false, nil
+	}
+	return out.ID, err == nil, err
+}
+
+// RequestApproval opens (or returns the open) approval request for this call.
+func (r *Registry) RequestApproval(ctx context.Context, req ApprovalRequest) (Ticket, error) {
+	var t Ticket
+	_, err := r.post(ctx, "/mcp/approvals/request", req, &t)
+	return t, err
+}
+
+func (r *Registry) post(ctx context.Context, path string, in, out any) (int, error) {
+	body, err := json.Marshal(in)
 	if err != nil {
-		return nil, err
+		return 0, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.URL+path, bytes.NewReader(body))
+	if err != nil {
+		return 0, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+r.Token)
 	resp, err := r.HTTP.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("registry: %w", err)
+		return 0, fmt.Errorf("registry: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("registry: status %d", resp.StatusCode)
+		return resp.StatusCode, fmt.Errorf("registry %s: status %d", path, resp.StatusCode)
 	}
-	var out struct {
-		Tools map[string]ToolState `json:"tools"`
-	}
-	return out.Tools, json.NewDecoder(resp.Body).Decode(&out)
+	return resp.StatusCode, json.NewDecoder(resp.Body).Decode(out)
 }

@@ -427,3 +427,36 @@ test_mcp_tools_for_gateway_fallback if {
 	ts := mcp.tools with input as {"server": "erp"} with data.aisec.mcp_tools as mcp_tools
 	ts == {"erp.read": {"status": "approved", "hash": pin}, "payments.transfer": {"status": "under_review", "hash": pin}}
 }
+
+# --- ticket 30: HITL approval and kill switch ----------------------------------------------------------------
+
+test_kill_switch_scopes if {
+	call := agent_call("invoice-bot", {})
+	every kills in [
+		{"global": true, "agent": {}, "tool": {}, "app": {}},
+		{"global": false, "agent": {"invoice-bot": "INC-1"}, "tool": {}, "app": {}},
+		{"global": false, "agent": {}, "tool": {"erp.read": "rug pull"}, "app": {}},
+		{"global": false, "agent": {}, "tool": {}, "app": {"copilot": "vendor breach"}},
+	] {
+		r := decision.result with input as call with data.aisec.agents as agents with data.aisec.kills as kills
+		r.action == "block"
+		"KILL_SWITCH" in r.reason_codes
+	}
+	other := {"global": false, "agent": {"other-bot": "x"}, "tool": {"hr.export": "x"}, "app": {"erp": "x"}}
+	ok := decision.result with input as call with data.aisec.agents as agents with data.aisec.kills as other
+	ok.action == "allow"
+	# An approval never lifts a kill switch.
+	k := decision.result with input as agent_call("invoice-bot", {"approval_granted": true}) with data.aisec.agents as agents
+		with data.aisec.kills as {"global": true, "agent": {}, "tool": {}, "app": {}}
+	k.action == "block"
+}
+
+test_approval_lifts_only_require_approval if {
+	tainted := {"tool": "payments.transfer", "session_injection_max": 0.6}
+	r := decision.result with input as agent_call("invoice-bot", object.union(tainted, {"approval_granted": true})) with data.aisec.agents as agents
+	r.action == "allow"
+	r.exempted_rules == ["tpl.injection-then-high-tool"]
+	# A stricter rule in the same decision still blocks.
+	b := decision.result with input as agent_call("invoice-bot", object.union(tainted, {"approval_granted": true, "scope_violations": 1})) with data.aisec.agents as agents
+	b.action == "block"
+}

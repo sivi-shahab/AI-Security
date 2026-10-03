@@ -61,6 +61,7 @@
     "chain_depth": {"type": "integer", "minimum": 0},
     "mcp_server": {"type": "string", "minLength": 1},
     "tool_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "approval_id": {"type": "string", "minLength": 1},
     "snippet": {"type": "string", "maxLength": 200, "description": "Already redacted by the PEP, e.g. 'NIK [REDACTED:PII_ID.NIK]'."}
   }
 }

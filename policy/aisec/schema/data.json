@@ -75,7 +75,8 @@
           "rate_exceeded": {"type": "boolean", "description": "This call is over the tool's per-agent rate (FR-AGT-4)."},
           "chain_depth": {"type": "integer", "minimum": 0, "description": "Agent-to-agent delegation hops behind this call: nesting of the token's act claim (RFC 8693)."},
           "mcp_server": {"type": "string", "minLength": 1, "description": "MCP server (gateway name) the tool belongs to; its definitions are in data.aisec.mcp_tools."},
-          "tool_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$", "description": "Pin of the tool definition the gateway last saw in tools/list (mcptools.Hash)."}
+          "tool_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$", "description": "Pin of the tool definition the gateway last saw in tools/list (mcptools.Hash)."},
+          "approval_granted": {"type": "boolean", "description": "A human approved exactly this call (FR-AGT-6); the gateway claimed the single-use approval."}
         }
       }
     }

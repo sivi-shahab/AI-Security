@@ -2,6 +2,15 @@
   "version": "builtin-1",
   "items": [
     {
+      "id": "tpl.kill-switch",
+      "description": "FR-AGT-7: kill switch aktif untuk agent, tool, app, atau global = block semua aksi agent.",
+      "when": [
+        {"field": "agent.killed", "op": "eq", "value": true}
+      ],
+      "action": "block",
+      "reason": "KILL_SWITCH"
+    },
+    {
       "id": "tpl.agent-not-active",
       "description": "FR-AGT-1: agent quarantined (mis. tanpa owner) atau suspended di registry = block semua aksinya.",
       "when": [

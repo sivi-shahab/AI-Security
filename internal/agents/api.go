@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"aisec/internal/authz"
@@ -20,8 +21,12 @@ func Routes(rt *authz.Router, s *Store, now func() time.Time) {
 			http.Error(w, err.Error(), http.StatusNotFound)
 		case errors.Is(err, ErrInvalid):
 			http.Error(w, err.Error(), http.StatusBadRequest)
-		case errors.Is(err, errScope):
+		case errors.Is(err, errScope), errors.Is(err, errSelf):
 			http.Error(w, err.Error(), http.StatusForbidden)
+		case errors.Is(err, ErrExpired):
+			http.Error(w, err.Error(), http.StatusGone)
+		case errors.Is(err, ErrConflict):
+			http.Error(w, err.Error(), http.StatusConflict)
 		case err != nil:
 			http.Error(w, "internal error", http.StatusInternalServerError)
 		default:
@@ -153,4 +158,94 @@ func Routes(rt *authz.Router, s *Store, now func() time.Time) {
 		t, err := s.RejectTool(r.Context(), c.Username, r.PathValue("server"), r.PathValue("name"), b.Note)
 		reply(w, 200, t, err)
 	})
+
+	// HITL approvals (ticket 30). Approvers act within the units of their binding, never on agents they own.
+	rt.Handle("GET /approvals", authz.AgentRead, func(w http.ResponseWriter, r *http.Request, _ authz.Caller) {
+		as, err := s.Approvals(r.Context(), r.URL.Query().Get("state"), now())
+		reply(w, 200, as, err)
+	})
+	rt.Handle("GET /approvals/{id}", authz.AgentRead, func(w http.ResponseWriter, r *http.Request, _ authz.Caller) {
+		a, err := s.GetApproval(r.Context(), r.PathValue("id"))
+		reply(w, 200, a, err)
+	})
+	for verb, approve := range map[string]bool{"approve": true, "reject": false} {
+		rt.Handle("POST /approvals/{id}/"+verb, authz.AgentApprove, func(w http.ResponseWriter, r *http.Request, c authz.Caller) {
+			var b struct {
+				Note string `json:"note"`
+			}
+			if err := decode(r, &b); err != nil {
+				reply(w, 0, nil, err)
+				return
+			}
+			a, err := s.DecideApproval(r.Context(), c.Username, r.PathValue("id"), approve, b.Note, now(), func(ag Agent) error {
+				if !c.Can(authz.AgentApprove, authz.Resource{BusinessUnit: ag.BusinessUnit}, now()) {
+					return errScope
+				}
+				return nil
+			})
+			reply(w, 200, a, err)
+		})
+	}
+
+	// Kill switches (ticket 30): an owner kills their own agent; SOC kills any agent, tool or app; global needs
+	// agent.kill.global (sensitive: fresh login and justification).
+	rt.Handle("GET /kills", authz.AgentRead, func(w http.ResponseWriter, r *http.Request, _ authz.Caller) {
+		ks, err := s.Kills(r.Context(), r.URL.Query().Get("all") != "true")
+		reply(w, 200, ks, err)
+	})
+	type killBody struct {
+		Scope  string `json:"scope"`
+		Target string `json:"target"`
+		Reason string `json:"reason"`
+	}
+	rt.Handle("POST /agents/{id}/kill", authz.AgentWrite, func(w http.ResponseWriter, r *http.Request, c authz.Caller) {
+		var b killBody
+		if err := decode(r, &b); err != nil {
+			reply(w, 0, nil, err)
+			return
+		}
+		cur, err := s.Get(r.Context(), r.PathValue("id"))
+		if err == nil {
+			err = inUnit(c, cur.BusinessUnit)
+		}
+		var k Kill
+		if err == nil {
+			k, err = s.SetKill(r.Context(), c.Username, "agent", cur.ID, b.Reason)
+		}
+		reply(w, 201, k, err)
+	})
+	rt.Handle("POST /kills", authz.IncidentWrite, func(w http.ResponseWriter, r *http.Request, c authz.Caller) {
+		var b killBody
+		err := decode(r, &b)
+		if err == nil && b.Scope == "global" {
+			err = errScope // POST /kills/global
+		}
+		var k Kill
+		if err == nil {
+			k, err = s.SetKill(r.Context(), c.Username, b.Scope, b.Target, b.Reason)
+		}
+		reply(w, 201, k, err)
+	})
+	rt.Handle("POST /kills/global", authz.AgentKillGlobal, func(w http.ResponseWriter, r *http.Request, c authz.Caller) {
+		var b killBody
+		err := decode(r, &b)
+		var k Kill
+		if err == nil {
+			k, err = s.SetKill(r.Context(), c.Username, "global", "", b.Reason)
+		}
+		reply(w, 201, k, err)
+	})
+	lift := func(global bool) func(http.ResponseWriter, *http.Request, authz.Caller) {
+		return func(w http.ResponseWriter, r *http.Request, c authz.Caller) {
+			id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+			if err != nil {
+				reply(w, 0, nil, ErrNotFound)
+				return
+			}
+			k, err := s.LiftKill(r.Context(), c.Username, id, global)
+			reply(w, 200, k, err)
+		}
+	}
+	rt.Handle("POST /kills/{id}/lift", authz.IncidentWrite, lift(false))
+	rt.Handle("POST /kills/global/{id}/lift", authz.AgentKillGlobal, lift(true))
 }

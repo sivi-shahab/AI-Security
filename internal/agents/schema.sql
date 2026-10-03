@@ -55,3 +55,38 @@ CREATE TABLE IF NOT EXISTS agents.mcp_tools (
   note           text,
   PRIMARY KEY (server, name)
 );
+
+-- HITL approvals (FR-AGT-6, ticket 30). The gateway asks for one per (agent, server, tool, args digest); the raw
+-- arguments never leave it, the preview has secrets and card data redacted. Single use, expires at expires_at.
+CREATE TABLE IF NOT EXISTS agents.approvals (
+  id            text        PRIMARY KEY,
+  agent_id      text        NOT NULL,
+  server        text        NOT NULL,
+  tool          text        NOT NULL,
+  args_digest   text        NOT NULL,
+  preview       jsonb       NOT NULL,
+  reason_codes  text[]      NOT NULL DEFAULT '{}',
+  trace_id      text,
+  state         text        NOT NULL CHECK (state IN ('pending', 'approved', 'rejected', 'expired', 'used')),
+  requested_at  timestamptz NOT NULL,
+  expires_at    timestamptz NOT NULL,
+  decided_by    text,
+  decided_at    timestamptz,
+  note          text,
+  used_at       timestamptz
+);
+CREATE UNIQUE INDEX IF NOT EXISTS approvals_open ON agents.approvals (agent_id, server, tool, args_digest)
+  WHERE state IN ('pending', 'approved');
+
+-- Kill switches (FR-AGT-7): at most one active per scope and target; lifting keeps the row for the record.
+CREATE TABLE IF NOT EXISTS agents.kills (
+  id          bigserial   PRIMARY KEY,
+  scope       text        NOT NULL CHECK (scope IN ('agent', 'tool', 'app', 'global')),
+  target      text        NOT NULL,  -- agent_id, tool name, app_id; '' for global
+  reason      text        NOT NULL,
+  created_by  text        NOT NULL,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  lifted_by   text,
+  lifted_at   timestamptz
+);
+CREATE UNIQUE INDEX IF NOT EXISTS kills_active ON agents.kills (scope, target) WHERE lifted_at IS NULL;

@@ -23,6 +23,7 @@ import (
 	"mime"
 	"net/http"
 	"path"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -59,8 +60,16 @@ type Gateway struct {
 	Emit     func(ctx context.Context, e events.Event) error
 	// Observe reports a server's tools/list to the registry (ticket 29) and returns which tools may be called;
 	// Pins is the fallback when the registry cannot be reached: the bundle's statuses and pinned hashes.
-	Observe  func(ctx context.Context, server string, tools []map[string]any) (map[string]ToolState, error)
-	Pins     func(ctx context.Context, server string) (map[string]Pin, error)
+	Observe func(ctx context.Context, server string, tools []map[string]any) (map[string]ToolState, error)
+	Pins    func(ctx context.Context, server string) (map[string]Pin, error)
+	// HITL (ticket 30): Claim uses a human approval of exactly this call; RequestApproval opens one. Both nil =
+	// no HITL, require_approval is a deny.
+	Claim           func(ctx context.Context, key ApprovalKey) (id string, ok bool, err error)
+	RequestApproval func(ctx context.Context, req ApprovalRequest) (Ticket, error)
+	// Kill switch (ticket 30): Kills reads the active switches from the bundle; Purge drops cached downstream
+	// credentials when they change.
+	Kills    func(ctx context.Context) (KillSet, error)
+	Purge    func()
 	Upstream *http.Client
 
 	Pepper      []byte // tenant HMAC key for principal ids and content hashes (spec §10.2)
@@ -73,6 +82,10 @@ type Gateway struct {
 	taint map[string]taint
 	rates map[string]window
 	seen  map[string]string // "server/tool" → hash of the definition last served in tools/list
+
+	killMu sync.Mutex
+	kills  KillSet
+	active map[*active]struct{}
 }
 
 const (
@@ -118,13 +131,15 @@ func (g *Gateway) challenge(w http.ResponseWriter, srv Server, errCode string) {
 
 // call is one agent request through the gateway.
 type call struct {
-	g        *Gateway
-	srv      Server
-	agentID  string
-	tools    map[string]*toolEntry
-	depth    int
-	trace    string
-	taintKey string
+	act        *active
+	approvalID string // human approval this tools/call used
+	g          *Gateway
+	srv        Server
+	agentID    string
+	tools      map[string]*toolEntry
+	depth      int
+	trace      string
+	taintKey   string
 }
 
 type toolEntry struct {
@@ -142,7 +157,8 @@ type pending struct {
 var traceparent = regexp.MustCompile(`^[0-9a-f]{2}-([0-9a-f]{32})-[0-9a-f]{16}-[0-9a-f]{2}$`)
 
 func (g *Gateway) serve(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+	ctx, cancel := context.WithCancel(r.Context()) // a kill switch cancels it: the session is cut mid-stream
+	defer cancel()
 	srv, ok := g.Servers[r.PathValue("server")]
 	if !ok {
 		http.NotFound(w, r)
@@ -172,6 +188,14 @@ func (g *Gateway) serve(w http.ResponseWriter, r *http.Request) {
 			c.tools[t.Name] = &toolEntry{t.Risk, t.Scopes}
 		}
 	}
+	// A killed agent or app gets nothing through, not even tools/list: its token is as good as revoked.
+	a := &active{agent: c.agentID, app: srv.AppID, cancel: cancel}
+	if !g.track(a) {
+		http.Error(w, "stopped by kill switch", http.StatusForbidden)
+		return
+	}
+	defer g.untrack(a)
+	c.act = a
 	// Taint follows the agent's trace when it propagates one (one task across tool servers); otherwise the agent.
 	c.taintKey = c.agentID
 	if m := traceparent.FindStringSubmatch(r.Header.Get("Traceparent")); m != nil {
@@ -370,6 +394,22 @@ func (c *call) toolCall(ctx context.Context, msg *message) ([]byte, *message) {
 		limit = toolscope.RatePerMinute(t.Scopes, limit)
 	}
 	agent["rate_exceeded"] = c.g.overRate(c.agentID+"|"+name, limit)
+	if c.g.setTool(c.act, name) {
+		m := rpcError(msg.ID, "stopped by kill switch", map[string]any{"reason_codes": []string{"KILL_SWITCH"}})
+		return nil, &m
+	}
+
+	// An approval binds to this agent, server, tool and these exact arguments, and is used once.
+	key := ApprovalKey{AgentID: c.agentID, Server: c.srv.Name, Tool: name, ArgsDigest: digest(args)}
+	if c.g.Claim != nil {
+		id, ok, err := c.g.Claim(ctx, key)
+		if err != nil {
+			c.g.Log.Error("approval claim", "err", err) // no approval: require_approval stays a deny
+		}
+		if ok {
+			c.approvalID, agent["approval_granted"] = id, true
+		}
+	}
 
 	in := inspectable(args)
 	d, eid, err := c.decide(ctx, "tool_call", name, in, agent)
@@ -381,12 +421,27 @@ func (c *call) toolCall(ctx context.Context, msg *message) ([]byte, *message) {
 	case "allow", "warn":
 		return mustJSON(msg), nil
 	case "redact", "tokenize": // ponytail: tokenize redacts until the token vault (ticket 24)
-		in.redact(d)
+		in.redact(obligationClasses(d))
 		params["arguments"] = args
 		msg.Params = mustJSON(params)
 		return mustJSON(msg), nil
+	case "require_approval":
+		if c.g.RequestApproval == nil {
+			break
+		}
+		// The approver sees the call with secrets and card data redacted; the raw arguments stay here.
+		in.redact([]string{"SECRET.*", "PCI.*"})
+		t, err := c.g.RequestApproval(ctx, ApprovalRequest{ApprovalKey: key, Preview: args, ReasonCodes: d.ReasonCodes, TraceID: c.trace})
+		if err != nil {
+			c.g.Log.Error("approval request", "err", err)
+			m := rpcError(msg.ID, "approval required but unavailable", map[string]any{"decision_id": eid, "action": d.Action, "reason_codes": d.ReasonCodes})
+			return nil, &m
+		}
+		m := rpcError(msg.ID, "approval required: call again with the same arguments once approved", map[string]any{"decision_id": eid,
+			"action": d.Action, "reason_codes": d.ReasonCodes, "approval_id": t.ID, "state": t.State, "expires_at": t.ExpiresAt})
+		return nil, &m
 	}
-	// block, quarantine, and require_approval: no HITL yet (ticket 30), so approval cannot be had = deny.
+	// block, quarantine, and require_approval without HITL: deny.
 	m := rpcError(msg.ID, "blocked by policy", map[string]any{"decision_id": eid, "action": d.Action, "reason_codes": d.ReasonCodes})
 	return nil, &m
 }
@@ -437,7 +492,7 @@ func (c *call) inspectPayload(ctx context.Context, b []byte, pend *pending) []by
 	case d.Action == "allow" || d.Action == "warn":
 		return b
 	case d.Action == "redact" || d.Action == "tokenize":
-		in.redact(d)
+		in.redact(obligationClasses(d))
 		*field = mustJSON(obj)
 		return mustJSON(msg)
 	}
@@ -509,14 +564,19 @@ func inspectable(v any) *content {
 	return c
 }
 
-// redact applies the decision's redact/tokenize obligations (class globs); none listed = every class found.
-func (c *content) redact(d Decision) {
+// obligationClasses are the class globs of the decision's redact/tokenize obligations.
+func obligationClasses(d Decision) []string {
 	var globs []string
 	for _, o := range d.Obligations {
 		if o.Type == "redact" || o.Type == "tokenize" {
 			globs = append(globs, o.Classes...)
 		}
 	}
+	return globs
+}
+
+// redact replaces the found classes matching globs (none = every class found) in place.
+func (c *content) redact(globs []string) {
 	want := func(typ string) bool {
 		if len(globs) == 0 {
 			return true
@@ -549,7 +609,7 @@ func (c *call) decide(ctx context.Context, direction, tool string, in *content, 
 	taint := g.taintOf(c.taintKey)
 	g.addTaint(c.taintKey, in.res.Injection.Score)
 	agent["agent_id"] = c.agentID
-	agent["hitl_available"] = false
+	agent["hitl_available"] = g.RequestApproval != nil
 	agent["session_injection_max"] = taint
 	agent["chain_depth"] = c.depth
 	classes := make([]any, 0, len(in.res.Classes))
@@ -593,6 +653,9 @@ func (c *call) decide(ctx context.Context, direction, tool string, in *content, 
 		e.RateExceeded = &x
 	}
 	e.MCPServer, _ = agent["mcp_server"].(string)
+	if direction == "tool_call" {
+		e.ApprovalID = c.approvalID
+	}
 	e.ToolHash, _ = agent["tool_hash"].(string)
 	if err := g.Emit(ctx, e); err != nil {
 		g.Log.Error("decision event", "err", err) // ponytail: logged, not retried; a local spool if Kafka outages bite
@@ -669,6 +732,126 @@ func (g *Gateway) seenHash(key string) (string, bool) {
 	defer g.mu.Unlock()
 	h, ok := g.seen[key]
 	return h, ok
+}
+
+// --- HITL approvals (ticket 30) ---
+
+// ApprovalKey is what an approval allows: this agent calling this tool on this server with these arguments.
+type ApprovalKey struct {
+	AgentID    string `json:"agent_id"`
+	Server     string `json:"server"`
+	Tool       string `json:"tool"`
+	ArgsDigest string `json:"args_digest"`
+}
+
+type ApprovalRequest struct {
+	ApprovalKey
+	Preview     map[string]any `json:"preview"`
+	ReasonCodes []string       `json:"reason_codes"`
+	TraceID     string         `json:"trace_id"`
+}
+
+// Ticket is the open approval request the agent is told about.
+type Ticket struct {
+	ID        string    `json:"approval_id"`
+	State     string    `json:"state"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
+// digest is the SHA-256 of the arguments' canonical JSON (sorted keys).
+func digest(args map[string]any) string {
+	sum := sha256.Sum256(mustJSON(args))
+	return hex.EncodeToString(sum[:])
+}
+
+// --- kill switch (ticket 30) ---
+
+// KillSet is data.aisec.kills: active switches by scope (target → reason).
+type KillSet struct {
+	Global bool              `json:"global"`
+	Agent  map[string]string `json:"agent"`
+	Tool   map[string]string `json:"tool"`
+	App    map[string]string `json:"app"`
+}
+
+func (k KillSet) hits(a *active) bool {
+	_, agent := k.Agent[a.agent]
+	_, app := k.App[a.app]
+	_, tool := k.Tool[a.tool]
+	return k.Global || agent || app || (a.tool != "" && tool)
+}
+
+// active is one request in flight, cancelled when a kill switch covers it.
+type active struct {
+	agent, app, tool string
+	cancel           context.CancelFunc
+}
+
+// track registers a request; false if a kill switch already covers it.
+func (g *Gateway) track(a *active) bool {
+	g.killMu.Lock()
+	defer g.killMu.Unlock()
+	if g.kills.hits(a) {
+		return false
+	}
+	if g.active == nil {
+		g.active = map[*active]struct{}{}
+	}
+	g.active[a] = struct{}{}
+	return true
+}
+
+func (g *Gateway) untrack(a *active) {
+	g.killMu.Lock()
+	defer g.killMu.Unlock()
+	delete(g.active, a)
+}
+
+// setTool records which tool a request calls; true if a kill switch covers it (the request is then cancelled).
+func (g *Gateway) setTool(a *active, tool string) bool {
+	g.killMu.Lock()
+	defer g.killMu.Unlock()
+	a.tool = tool
+	if g.kills.hits(a) {
+		a.cancel()
+		return true
+	}
+	return false
+}
+
+// ApplyKills installs a kill set: every request it covers is cancelled at once (its stream to the agent ends),
+// and cached downstream credentials are dropped.
+func (g *Gateway) ApplyKills(k KillSet) {
+	g.killMu.Lock()
+	changed := !reflect.DeepEqual(k, g.kills)
+	g.kills = k
+	for a := range g.active {
+		if k.hits(a) {
+			a.cancel()
+		}
+	}
+	g.killMu.Unlock()
+	if changed && g.Purge != nil {
+		g.Purge()
+	}
+}
+
+// WatchKills polls the PDP's kill switches every interval until ctx ends. Kill latency for live sessions is the
+// bundle's propagation plus at most one interval. A failed read keeps the last known set.
+func (g *Gateway) WatchKills(ctx context.Context, interval time.Duration) {
+	for t := time.NewTicker(interval); ; {
+		if k, err := g.Kills(ctx); err != nil {
+			g.Log.Error("kill switch poll", "err", err)
+		} else {
+			g.ApplyKills(k)
+		}
+		select {
+		case <-ctx.Done():
+			t.Stop()
+			return
+		case <-t.C:
+		}
+	}
 }
 
 // --- per-replica state (ponytail: in memory; shared store when replicas must agree on rates and taint) ---

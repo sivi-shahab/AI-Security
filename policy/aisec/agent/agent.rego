@@ -47,7 +47,21 @@ definition_changed if {
 	input.agent.tool_hash != mcp_tool.hash
 }
 
-registry := {"registered": registered, "status": status, "risk_tier": risk_tier, "tool_allowed": tool_allowed, "tool_approved": tool_approved}
+# FR-AGT-7 kill switch (data.aisec.kills, released by the registry): global, or this agent, tool or app.
+default killed := false
+
+killed if data.aisec.kills.global
+
+killed if data.aisec.kills.agent[input.agent.agent_id]
+
+killed if data.aisec.kills.tool[input.agent.tool]
+
+killed if data.aisec.kills.app[input.destination.app_id]
+
+registry := {
+	"registered": registered, "status": status, "risk_tier": risk_tier, "tool_allowed": tool_allowed,
+	"tool_approved": tool_approved, "killed": killed,
+}
 
 agent := object.union(object.union(input.agent, registry), {"tool_risk": tool.risk}) if {
 	input.agent

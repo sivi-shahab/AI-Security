@@ -27,6 +27,7 @@ const (
 	AgentRead        = "agent.read"
 	AgentWrite       = "agent.write"
 	AgentKillGlobal  = "agent.kill.global"
+	AgentApprove     = "agent.approve" // HITL: approve a high-risk agent action (FR-AGT-6)
 	SelfService      = "self.request"
 	IdentityRead     = "identity.read"
 	IdentityAdmin    = "identity.admin" // bind roles to users/groups
@@ -48,12 +49,14 @@ var Roles = map[string][]string{
 	"dpo":             {DashboardRead, ComplianceRead, ComplianceWrite, IncidentRead, EvidenceUnmask, AuditRead},
 	"app_owner":       {AppRead, FeedbackWrite},
 	"agent_owner":     {AgentRead, AgentWrite},
-	"auditor":         {DashboardRead, ComplianceRead, AuditRead, IncidentRead, PolicyRead, ConfigRead, IdentityRead},
-	"end_user":        {SelfService},
+	// Approves high-risk agent actions within the units of the binding; never for agents the approver owns.
+	"agent_approver": {AgentRead, AgentApprove},
+	"auditor":        {DashboardRead, ComplianceRead, AuditRead, IncidentRead, PolicyRead, ConfigRead, IdentityRead},
+	"end_user":       {SelfService},
 	// Emergency access when the bank IdP is down: everything, every request audited and alerted.
 	"break_glass": {
 		DashboardRead, IncidentRead, IncidentWrite, PolicyRead, ConfigRead, ConfigWrite, ComplianceRead, AuditRead,
-		AgentRead, AgentWrite, AgentKillGlobal, IdentityRead, IdentityAdmin, BreakGlassAccess,
+		AgentRead, AgentWrite, AgentApprove, AgentKillGlobal, IdentityRead, IdentityAdmin, BreakGlassAccess,
 	},
 }
 

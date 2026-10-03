@@ -75,11 +75,13 @@ func main() {
 	opa := &mcpgw.OPA{URL: env("OPA_URL", "http://127.0.0.1:8181"), HTTP: &http.Client{Timeout: 2 * time.Second}}
 	sts := &mcpgw.STS{URL: env("STS_TOKEN_URL", issuer+"/protocol/openid-connect/token"), ClientID: os.Getenv("STS_CLIENT_ID"),
 		ClientSecret: os.Getenv("STS_CLIENT_SECRET"), HTTP: &http.Client{Timeout: 5 * time.Second}, Now: time.Now}
+	registry := &mcpgw.Registry{URL: strings.TrimSuffix(os.Getenv("CONTROL_PLANE_URL"), "/"), Token: os.Getenv("MCP_GATEWAY_TOKEN"),
+		HTTP: &http.Client{Timeout: 5 * time.Second}}
 	gw := &mcpgw.Gateway{
 		BaseURL: strings.TrimSuffix(os.Getenv("MCP_BASE_URL"), "/"), Issuer: issuer, Servers: servers,
 		Verify: verify, Exchange: sts.Exchange, Agent: opa.Agent, Decide: opa.Decide, Pins: opa.Pins,
-		Observe: (&mcpgw.Registry{URL: strings.TrimSuffix(os.Getenv("CONTROL_PLANE_URL"), "/"), Token: os.Getenv("MCP_GATEWAY_TOKEN"),
-			HTTP: &http.Client{Timeout: 5 * time.Second}}).Observe,
+		Observe: registry.Observe, Claim: registry.Claim, RequestApproval: registry.RequestApproval,
+		Kills: opa.Kills, Purge: sts.Purge,
 		Emit: func(ctx context.Context, e events.Event) error {
 			ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 			defer cancel()
@@ -90,6 +92,8 @@ func main() {
 		Pepper:   []byte(os.Getenv("TENANT_PEPPER")), TenantID: os.Getenv("TENANT_ID"), DefaultRate: rate,
 		Now: time.Now, Log: log,
 	}
+	// Kill switches reach live sessions within one poll of the bundle landing (FR-AGT-7: ≤ 10 s end to end).
+	go gw.WatchKills(ctx, time.Second)
 	mux := http.NewServeMux()
 	gw.Routes(mux)
 	server.Run("mcp-gateway", mux)
