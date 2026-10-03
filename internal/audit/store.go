@@ -128,3 +128,12 @@ func (s *Store) At(ctx context.Context, seq int64) (string, error) {
 	err := s.db.QueryRow(ctx, "SELECT hash FROM audit.audit_log WHERE seq = $1", seq).Scan(&hash)
 	return hash, err
 }
+
+// After returns up to limit entries with seq > afterSeq, in order: for consumers that tail the log (SIEM export).
+func (s *Store) After(ctx context.Context, afterSeq int64, limit int) ([]Entry, error) {
+	rows, err := s.db.Query(ctx, "SELECT "+cols+" FROM audit.audit_log WHERE seq > $1 ORDER BY seq LIMIT $2", afterSeq, limit)
+	if err != nil {
+		return nil, err
+	}
+	return scan(rows)
+}

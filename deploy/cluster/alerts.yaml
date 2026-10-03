@@ -129,3 +129,26 @@ spec:
           labels: {severity: info}
           annotations:
             summary: "{{ $value }} policy exception(s) expire within 7 days"
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: aisec-siem-export
+  namespace: aisec
+spec:
+  groups:
+    - name: siem-export
+      rules:
+        # Records the SIEM never got: replay from topic aisec.siem.dlq.v1 once the cause is fixed.
+        - alert: SIEMRecordsDeadLettered
+          expr: sum by (sink) (increase(siem_records_dead_lettered_total[15m])) > 0
+          labels: {severity: warning}
+          annotations:
+            summary: "SIEM export dead-lettered records for sink {{ $labels.sink }}"
+        # Security telemetry (policy changes, unmask, break-glass) waiting to reach the SIEM.
+        - alert: SIEMAuditExportLagging
+          expr: max(siem_audit_lag) > 0
+          for: 15m
+          labels: {severity: warning}
+          annotations:
+            summary: "{{ $value }} audit entries not yet exported to the SIEM for 15 minutes"

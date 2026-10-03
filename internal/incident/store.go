@@ -92,10 +92,15 @@ func (s *Store) Ingest(ctx context.Context, e events.Event, raw []byte, now time
 			if err != nil {
 				return err
 			}
+			// Audited so it reaches the SIEM (ticket 19) with the other security telemetry.
+			if _, err := audit.AppendTx(ctx, tx, e.TenantID, "system", "incident.open", map[string]any{"incident": id, "severity": sev,
+				"title": title(e), "risk": e.RiskScore, "event": e.EventID, "trace_id": e.TraceID}); err != nil {
+				return err
+			}
 		case err != nil:
 			return err
 		default:
-			if err := s.escalate(ctx, tx, id, sev, now); err != nil {
+			if err := s.escalate(ctx, tx, id, sev, now, "system", fmt.Sprintf("event %s risk %d", e.EventID, e.RiskScore)); err != nil {
 				return err
 			}
 		}
@@ -133,7 +138,7 @@ func ackDeadline(sev string, from time.Time) *time.Time {
 }
 
 // escalate raises severity to at least sev (never lowers it). While unacknowledged, a tighter SLA starts now.
-func (s *Store) escalate(ctx context.Context, tx pgx.Tx, id, sev string, now time.Time) error {
+func (s *Store) escalate(ctx context.Context, tx pgx.Tx, id, sev string, now time.Time, actor, note string) error {
 	var cur string
 	var state State
 	if err := tx.QueryRow(ctx, "SELECT severity, state FROM incident.incidents WHERE id = $1 FOR UPDATE", id).Scan(&cur, &state); err != nil {
@@ -142,9 +147,14 @@ func (s *Store) escalate(ctx context.Context, tx pgx.Tx, id, sev string, now tim
 	if SeverityRank(sev) <= SeverityRank(cur) {
 		return nil
 	}
-	_, err := tx.Exec(ctx, `UPDATE incident.incidents SET severity = $2,
+	var tenant string
+	err := tx.QueryRow(ctx, `UPDATE incident.incidents SET severity = $2,
 		ack_deadline = CASE WHEN state = 'New' THEN least(coalesce(ack_deadline, $3), $3) ELSE ack_deadline END
-		WHERE id = $1`, id, sev, ackDeadline(sev, now))
+		WHERE id = $1 RETURNING tenant_id::text`, id, sev, ackDeadline(sev, now)).Scan(&tenant)
+	if err != nil {
+		return err
+	}
+	_, err = audit.AppendTx(ctx, tx, tenant, actor, "incident.escalate", map[string]any{"incident": id, "from": cur, "to": sev, "note": note})
 	return err
 }
 
@@ -249,11 +259,7 @@ func (s *Store) RaiseSeverity(ctx context.Context, id, sev, note, actor string, 
 		return Incident{}, fmt.Errorf("%w: severity can only be raised (%s -> %s)", ErrInvalidTransition, cur.Severity, sev)
 	}
 	err = pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
-		if err := s.escalate(ctx, tx, id, sev, now); err != nil {
-			return err
-		}
-		_, err := audit.AppendTx(ctx, tx, cur.TenantID, actor, "incident.severity", map[string]any{"incident": id, "from": cur.Severity, "to": sev, "note": note})
-		return err
+		return s.escalate(ctx, tx, id, sev, now, actor, note)
 	})
 	if err != nil {
 		return Incident{}, err

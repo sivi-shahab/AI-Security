@@ -1,0 +1,56 @@
+# SIEM export (spec §11, §12.3): decision events (Kafka), audit log tail (Postgres), Alertmanager alerts → CEF/syslog
+# over TLS and/or HTTP (HEC/JSON). Replicas share the event partitions; only one holds the audit cursor at a time.
+# Secret siem-export (out of band): KAFKA_BROKERS, SCHEMA_REGISTRY_URL, DATABASE_URL, SIEM_SYSLOG_ADDR and/or
+# SIEM_HTTP_URL + SIEM_HTTP_FORMAT, ALERTMANAGER_TOKEN_SHA256. Files: /siem/ca.crt (SIEM CA), /siem/http-auth.
+# Alertmanager receiver: webhook_configs: [{url: http://siem-export.aisec/alertmanager,
+#   http_config: {authorization: {credentials_file: <token>}}, send_resolved: true}]
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: siem-export
+  labels: {app: siem-export}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: siem-export}
+  template:
+    metadata:
+      labels: {app: siem-export}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: siem-export
+          image: registry.local/aisec/siem-export:dev
+          imagePullPolicy: Always
+          envFrom: [{secretRef: {name: siem-export}}]
+          env:
+            - {name: SIEM_SYSLOG_CA_FILE, value: /siem/ca.crt}
+            - {name: SIEM_HTTP_AUTH_FILE, value: /siem/http-auth}
+          ports: [{containerPort: 8080, name: http}]  # /healthz, /metrics, POST /alertmanager
+          readinessProbe: {httpGet: {path: /healthz, port: http}}
+          livenessProbe: {httpGet: {path: /healthz, port: http}}
+          volumeMounts:
+            - {name: siem, mountPath: /siem, readOnly: true}
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+      volumes:
+        - {name: siem, secret: {secretName: siem-export-files}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: siem-export
+  labels: {app: siem-export}
+spec:
+  selector: {app: siem-export}
+  ports: [{port: 80, targetPort: http, name: http}]

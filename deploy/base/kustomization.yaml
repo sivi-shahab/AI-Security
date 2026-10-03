@@ -6,6 +6,7 @@ resources:
   - services.yaml
   - audit-anchor.yaml
   - event-ingest.yaml
+  - siem-export.yaml
 configMapGenerator:
   - name: opa-config
     files: [opa/opa.yaml]
