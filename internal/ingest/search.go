@@ -53,3 +53,15 @@ func (o *OpenSearch) Events(ctx context.Context, from, to time.Time, limit int) 
 	}
 	return out, nil
 }
+
+// Search runs a query DSL body over the daily indices and returns the raw response (aggregations for posture).
+func (o *OpenSearch) Search(ctx context.Context, body []byte) ([]byte, error) {
+	code, b, err := o.do(ctx, http.MethodPost, "/"+IndexPrefix+"*/_search?ignore_unavailable=true&allow_no_indices=true", body, "application/json")
+	if err != nil {
+		return nil, err
+	}
+	if code != http.StatusOK {
+		return nil, fmt.Errorf("search: HTTP %d: %s", code, b)
+	}
+	return b, nil
+}

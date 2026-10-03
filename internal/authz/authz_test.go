@@ -64,6 +64,15 @@ func TestEveryRoleUsesKnownPermissions(t *testing.T) {
 			}
 		}
 	}
+	// Ticket 20: the CISO sees the dashboard and changes nothing.
+	for _, p := range authz.Roles["ciso"] {
+		if !strings.HasSuffix(p, ".read") {
+			t.Errorf("ciso holds non-read permission %s", p)
+		}
+	}
+	if !slices.Contains(authz.Roles["ciso"], authz.DashboardRead) {
+		t.Error("ciso cannot read the dashboard")
+	}
 	// Separation of duties: whoever writes policy cannot publish it alone (4-eyes, ticket 12).
 	for role, perms := range authz.Roles {
 		if role != "break_glass" && slices.Contains(perms, authz.PolicyWrite) && slices.Contains(perms, authz.PolicyPublish) {

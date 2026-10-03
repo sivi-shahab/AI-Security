@@ -24,6 +24,7 @@ import (
 	"aisec/internal/ingest"
 	"aisec/internal/lifecycle"
 	"aisec/internal/policysvc"
+	"aisec/internal/posture"
 	"aisec/internal/privacy"
 	"aisec/internal/server"
 	"aisec/policy"
@@ -199,7 +200,8 @@ func main() {
 		}
 	})
 	routes(rt, deps{bundles: bundles, scim: ids.SCIMHandler(scimHash, os.Getenv("PUBLIC_URL")), metrics: metrics, incidents: incidents, identity: ids,
-		policies: policies, simulator: simulator, apps: apps, feedKey: feedKey})
+		policies: policies, simulator: simulator, apps: apps, feedKey: feedKey,
+		posture: posture.Sources{Search: search.Search, Apps: apps, Incidents: incidents, Policies: policies}})
 	server.Run("control-plane", rt.Mux)
 	cancel()
 	kc.Close()

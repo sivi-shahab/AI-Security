@@ -373,3 +373,51 @@ func (s *Store) PurgeExpired(ctx context.Context, now time.Time) (int64, error) 
 	tag, err := s.db.Exec(ctx, "DELETE FROM incident.evidence WHERE expires_at < $1", now)
 	return tag.RowsAffected(), err
 }
+
+// Summary is the posture view of incidents (ticket 20).
+type Summary struct {
+	Open            int            `json:"open"` // not Resolved/Closed
+	BySeverity      map[string]int `json:"open_by_severity"`
+	AckSLA          int            `json:"with_ack_sla"` // New with a deadline
+	AckOverdue      int            `json:"ack_overdue"`
+	CriticalOpened  int            `json:"critical_opened"`                 // in the window
+	MTTDCriticalSec *float64       `json:"mttd_critical_seconds,omitempty"` // mean of opened_at - first_event_at
+	Top             []Incident     `json:"top"`                             // open, most severe and riskiest first
+}
+
+// Summarize reports open incidents now and critical detection time over incidents opened since `since`.
+func (s *Store) Summarize(ctx context.Context, since, now time.Time) (Summary, error) {
+	sum := Summary{BySeverity: map[string]int{}}
+	rows, err := s.db.Query(ctx, "SELECT severity, count(*) FROM incident.incidents WHERE state = ANY($1) GROUP BY severity", OpenStates)
+	if err != nil {
+		return sum, err
+	}
+	for rows.Next() {
+		var sev string
+		var n int
+		if err := rows.Scan(&sev, &n); err != nil {
+			return sum, err
+		}
+		sum.BySeverity[sev], sum.Open = n, sum.Open+n
+	}
+	if err := rows.Err(); err != nil {
+		return sum, err
+	}
+	err = s.db.QueryRow(ctx, `SELECT count(*) FILTER (WHERE ack_deadline IS NOT NULL), count(*) FILTER (WHERE ack_deadline < $1)
+		FROM incident.incidents WHERE state = 'New'`, now).Scan(&sum.AckSLA, &sum.AckOverdue)
+	if err != nil {
+		return sum, err
+	}
+	err = s.db.QueryRow(ctx, `SELECT count(*), avg(extract(epoch FROM opened_at - first_event_at))::float8
+		FROM incident.incidents WHERE severity = 'critical' AND opened_at >= $1`, since).Scan(&sum.CriticalOpened, &sum.MTTDCriticalSec)
+	if err != nil {
+		return sum, err
+	}
+	rows, err = s.db.Query(ctx, "SELECT "+incidentCols+` FROM incident.incidents WHERE state = ANY($1)
+		ORDER BY array_position(ARRAY['critical','high','medium','low'], severity), max_risk DESC, opened_at LIMIT 10`, OpenStates)
+	if err != nil {
+		return sum, err
+	}
+	sum.Top, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (Incident, error) { return scanIncident(r) })
+	return sum, err
+}

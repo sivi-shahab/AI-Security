@@ -172,6 +172,12 @@ func (s *Store) Sweep(ctx context.Context, now time.Time) (expired, notified int
 	return expired, notified, nil
 }
 
+// ActiveExceptions counts exceptions in force.
+func (s *Store) ActiveExceptions(ctx context.Context, now time.Time) (n int, err error) {
+	err = s.db.QueryRow(ctx, "SELECT count(*) FROM policy.exceptions WHERE state = 'active' AND expires_at > $1", now).Scan(&n)
+	return n, err
+}
+
 // ExpiringSoon counts active exceptions within the notice window (gauge for alerting).
 func (s *Store) ExpiringSoon(ctx context.Context, now time.Time) (n int, err error) {
 	err = s.db.QueryRow(ctx, "SELECT count(*) FROM policy.exceptions WHERE state = 'active' AND expires_at <= $1", now.Add(ExpiryNotice)).Scan(&n)

@@ -123,6 +123,7 @@ type View struct {
 	App
 	Source    string     `json:"source"` // feed | local | observed (seen in traffic, not in the catalog)
 	Sanction  string     `json:"sanction"`
+	Decided   bool       `json:"decided"` // the bank set a status (vs. the feed default)
 	Owner     *string    `json:"owner,omitempty"`
 	Reason    *string    `json:"reason,omitempty"`
 	ReviewAt  *time.Time `json:"review_at,omitempty"`
@@ -184,7 +185,7 @@ func effective(ctx context.Context, q querier, today time.Time) (map[string]*Vie
 		}
 		cur.Owner, cur.Reason, cur.ReviewAt, cur.UpdatedBy = v.Owner, v.Reason, v.ReviewAt, v.UpdatedBy
 		if sanction != nil {
-			cur.Sanction = *sanction
+			cur.Sanction, cur.Decided = *sanction, true
 		}
 		if region != nil {
 			cur.HostingRegion = *region
