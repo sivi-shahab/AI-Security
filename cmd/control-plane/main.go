@@ -20,6 +20,8 @@ import (
 	"aisec/internal/events"
 	"aisec/internal/identity"
 	"aisec/internal/incident"
+	"aisec/internal/ingest"
+	"aisec/internal/lifecycle"
 	"aisec/internal/policysvc"
 	"aisec/internal/privacy"
 	"aisec/internal/server"
@@ -27,7 +29,7 @@ import (
 )
 
 // Env: BUNDLE_SIGNING_KEY_FILE, DATABASE_URL, INCIDENT_KEK_FILE (32 raw bytes), KAFKA_BROKERS, SCHEMA_REGISTRY_URL,
-// TENANT_ID, PUBLIC_URL, and identity (ADR-0002): OIDC_ISSUER, OIDC_AUDIENCE, OIDC_MFA_ACR (comma-separated acr
+// TENANT_ID, PUBLIC_URL, OPENSEARCH_URL/USER/PASSWORD (policy simulation reads stored events), and identity (ADR-0002): OIDC_ISSUER, OIDC_AUDIENCE, OIDC_MFA_ACR (comma-separated acr
 // values that mean MFA), BREAK_GLASS_SUBS (comma-separated token subs), SCIM_TOKEN_SHA256 (hex).
 func main() {
 	// `control-plane audit anchor|verify ...`: run by the audit-anchor CronJob or via kubectl exec.
@@ -46,13 +48,6 @@ func main() {
 	if err != nil {
 		fail("read bundle signing key", err)
 	}
-	tarball, rev, err := policysvc.Build(ctx, policy.Files, string(key))
-	if err != nil {
-		fail("build policy bundle", err)
-	}
-	bundles := &policysvc.Server{}
-	bundles.Publish(tarball, rev)
-	log.Info("policy bundle published", "revision", rev)
 
 	// Incidents: Postgres (with the audit log), Kafka for decision events.
 	auditLog, err := audit.Open(ctx, os.Getenv("DATABASE_URL"))
@@ -91,6 +86,34 @@ func main() {
 				log.Error("purge expired evidence", "err", err)
 			} else if n > 0 {
 				log.Info("purged expired raw evidence", "count", n)
+			}
+		}
+	}()
+
+	// Policy lifecycle: releases from Postgres become the signed bundle on every replica.
+	policies, err := lifecycle.Open(ctx, db, os.Getenv("TENANT_ID"), policy.Files)
+	if err != nil {
+		fail("policy store", err)
+	}
+	bundles := &policysvc.Server{}
+	releaser := &lifecycle.Releaser{Store: policies, Server: bundles, FS: policy.Files, SigningKey: string(key), Log: log, Poll: 15 * time.Second}
+	if err := releaser.Sync(ctx); err != nil {
+		fail("build policy bundle", err)
+	}
+	go releaser.Run(ctx)
+	corpus, err := lifecycle.LoadCorpus(policy.Files)
+	if err != nil {
+		fail("simulation corpus", err)
+	}
+	search := &ingest.OpenSearch{URL: os.Getenv("OPENSEARCH_URL"), User: os.Getenv("OPENSEARCH_USER"), Password: os.Getenv("OPENSEARCH_PASSWORD"),
+		HTTP: &http.Client{Timeout: time.Minute}}
+	simulator := &lifecycle.Simulator{Store: policies, Source: search.Events, Corpus: corpus, MaxEvents: 100_000, Log: log}
+	go func() {
+		for t := time.NewTicker(time.Hour); ctx.Err() == nil; <-t.C {
+			if expired, notified, err := policies.Sweep(ctx, time.Now()); err != nil {
+				log.Error("exception sweep", "err", err)
+			} else if expired+notified > 0 {
+				log.Info("exception sweep", "expired", expired, "expiry_notices", notified)
 			}
 		}
 	}()
@@ -138,8 +161,13 @@ func main() {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 		_, _ = fmt.Fprintf(w, "# TYPE incident_ack_overdue gauge\nincident_ack_overdue %d\n", n)
 		_, _ = fmt.Fprintf(w, "# TYPE breakglass_requests_total counter\nbreakglass_requests_total %d\n", breakGlassRequests.Load())
+		_, _ = fmt.Fprintf(w, "# TYPE policy_release_current gauge\npolicy_release_current %d\n", releaser.Current())
+		if n, err := policies.ExpiringSoon(r.Context(), time.Now()); err == nil {
+			_, _ = fmt.Fprintf(w, "# TYPE policy_exceptions_expiring gauge\npolicy_exceptions_expiring %d\n", n)
+		}
 	})
-	routes(rt, deps{bundles: bundles, scim: ids.SCIMHandler(scimHash, os.Getenv("PUBLIC_URL")), metrics: metrics, incidents: incidents, identity: ids})
+	routes(rt, deps{bundles: bundles, scim: ids.SCIMHandler(scimHash, os.Getenv("PUBLIC_URL")), metrics: metrics, incidents: incidents, identity: ids,
+		policies: policies, simulator: simulator})
 	server.Run("control-plane", rt.Mux)
 	cancel()
 	kc.Close()

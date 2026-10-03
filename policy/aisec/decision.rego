@@ -31,6 +31,7 @@ result := {
 	"reason_codes": ["INPUT_SCHEMA_INVALID"],
 	"matched_rules": [],
 	"monitor_rules": [],
+	"exempted_rules": [],
 	"policy_id": "aisec.decision",
 	"policy_version": data.aisec.rules.version,
 	# A malformed input is a PEP bug, not user risk: alert on INPUT_SCHEMA_INVALID, do not page the SOC.
@@ -45,6 +46,7 @@ result := {
 	"reason_codes": sort({r.reason | some r in enforced}),
 	"matched_rules": sort({r.id | some r in enforced}),
 	"monitor_rules": sort({r.id | some r in monitored}),
+	"exempted_rules": sort({r.id | some r in exempted}),
 	"policy_id": "aisec.decision",
 	"policy_version": data.aisec.rules.version,
 	"risk_score": risk.score,
@@ -62,7 +64,30 @@ matched contains rule if {
 enforced contains r if {
 	some r in matched
 	object.get(r, "mode", "enforce") == "enforce"
+	not r in exempted
 }
+
+# FR-POL-7: an approved exception lifts the listed rules for its scope until expires_at (RFC 3339). Exempted rules
+# are reported in the result, never silently dropped. Every scope key must match; an empty scope matches nothing.
+exempted contains r if {
+	some r in matched
+	object.get(r, "mode", "enforce") == "enforce"
+	some ex in data.aisec.exceptions.items
+	r.id in ex.rules
+	time.now_ns() < time.parse_rfc3339_ns(ex.expires_at)
+	count(ex.scope) > 0
+	every k, v in ex.scope {
+		in_scope(k, v)
+	}
+}
+
+in_scope("principal_id", v) if input.principal.id == v
+
+in_scope("group", v) if v in object.get(input.principal, "groups", [])
+
+in_scope("app_id", v) if input.destination.app_id == v
+
+in_scope("agent_id", v) if input.agent.agent_id == v
 
 monitored contains r if {
 	some r in matched

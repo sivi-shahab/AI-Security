@@ -1,9 +1,14 @@
 package events
 
 import (
+	"bytes"
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/santhosh-tekuri/jsonschema/v6"
+
+	"aisec/policy"
 )
 
 func valid() Event {
@@ -82,4 +87,53 @@ func TestMarshalMatchesSchema(t *testing.T) {
 	if _, err := Marshal(bad, schema); err == nil {
 		t.Error("producer would publish an unredacted snippet")
 	}
+}
+
+// Replayed inputs must pass the PDP's own input schema, or simulation would only ever see INPUT_SCHEMA_INVALID.
+func TestPDPInputMatchesPDPSchema(t *testing.T) {
+	raw, _ := policy.Files.ReadFile("aisec/schema/data.json")
+	var doc struct {
+		Input json.RawMessage `json:"input"`
+	}
+	_ = json.Unmarshal(raw, &doc)
+	pdp, err := Compile(string(doc.Input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, yes := 0.4, true
+	full := valid()
+	full.Sensitivity, full.Sanction, full.Region = "confidential", "unsanctioned", "US"
+	full.PrincipalGroups, full.PrincipalRisk, full.Device, full.AccountContext = []string{"SG-A"}, &f, "unmanaged", "personal"
+	full.InjectionScore, full.VolumeRatio, full.TrainsOnData = &f, &f, &yes
+	full.AgentID, full.ToolRisk, full.AgentAction, full.AgentRegistered, full.SessionInjectionMax = "agent-1", "high", "financial", &yes, &f
+	full.Classes = []Class{{Type: "PCI.PAN", Count: 2}}
+	for name, e := range map[string]Event{"full": full, "minimal": func() Event {
+		m := valid()
+		m.Sensitivity, m.Sanction, m.Region = "public", "sanctioned", "ID"
+		return m
+	}()} {
+		in, ok := e.PDPInput()
+		if !ok {
+			t.Fatalf("%s: not replayable", name)
+		}
+		b, _ := json.Marshal(in)
+		v, _ := jsonschema.UnmarshalJSON(bytes.NewReader(b))
+		if err := pdp.Validate(v); err != nil {
+			t.Errorf("%s: rebuilt input fails the PDP schema: %v\n%s", name, err, b)
+		}
+		if _, err := Marshal(e, mustCompile(t)); err != nil {
+			t.Errorf("%s: event itself invalid: %v", name, err)
+		}
+	}
+	if _, ok := valid().PDPInput(); ok {
+		t.Error("event without sensitivity/sanction/region claimed replayable")
+	}
+}
+
+func mustCompile(t *testing.T) *jsonschema.Schema {
+	s, err := Compile(SchemaV1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
 }

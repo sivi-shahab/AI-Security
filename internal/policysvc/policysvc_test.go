@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"io"
 	"io/fs"
 	"math"
@@ -73,7 +74,7 @@ func read(tarball []byte, pub string) (bundle.Bundle, error) {
 
 func TestBuildSignsVerifiableBundle(t *testing.T) {
 	priv, pub := keyPair(t)
-	tarball, rev, err := Build(context.Background(), policy.Files, priv)
+	tarball, rev, err := Build(context.Background(), policy.Files, priv, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,14 +113,14 @@ func TestBuildRefusesInvalidRules(t *testing.T) {
 	})
 	fsys["aisec/rules/data.json"] = &fstest.MapFile{Data: []byte(
 		`{"version": "bad", "items": [{"id": "x", "when": [{"field": "channel", "op": "regex", "value": "."}], "action": "block", "reason": "X"}]}`)}
-	if _, _, err := Build(context.Background(), fsys, priv); err == nil || !strings.Contains(err.Error(), "unknown op regex") {
+	if _, _, err := Build(context.Background(), fsys, priv, nil); err == nil || !strings.Contains(err.Error(), "unknown op regex") {
 		t.Fatalf("err = %v, want rule_errors refusal", err)
 	}
 
 	fsys["aisec/rules/data.json"] = &fstest.MapFile{Data: []byte(`{"version": "ok", "items": []}`)}
 	cfg, _ := fs.ReadFile(policy.Files, "aisec/risk/config/data.json")
 	fsys["aisec/risk/config/data.json"] = &fstest.MapFile{Data: bytes.Replace(cfg, []byte(`"sens": 0.30`), []byte(`"sens": 0.90`), 1)}
-	if _, _, err := Build(context.Background(), fsys, priv); err == nil || !strings.Contains(err.Error(), "weights sum to") {
+	if _, _, err := Build(context.Background(), fsys, priv, nil); err == nil || !strings.Contains(err.Error(), "weights sum to") {
 		t.Fatalf("err = %v, want risk config refusal", err)
 	}
 }
@@ -260,5 +261,48 @@ func TestRiskScoreAlwaysInRange(t *testing.T) {
 	}
 	if !seen[0] || !seen[100] || len(seen) < 40 {
 		t.Errorf("generator too narrow: %d distinct scores, 0 seen %v, 100 seen %v", len(seen), seen[0], seen[100])
+	}
+}
+
+// A release replaces the rules and exceptions documents; the revision follows the content, and the evaluator
+// runs exactly what the bundle carries.
+func TestOverridesAndEvaluator(t *testing.T) {
+	ctx := context.Background()
+	priv, pub := keyPair(t)
+	rules := map[string]any{"version": "release-7", "items": []any{map[string]any{
+		"id": "block-chatgpt", "when": []any{map[string]any{"field": "destination.app_id", "op": "eq", "value": "chatgpt"}},
+		"action": "block", "reason": "NO_CHATGPT"}}}
+	ov := Overrides{"aisec.rules": rules, "aisec.exceptions": map[string]any{"items": []any{}}}
+	tarball, rev, err := Build(ctx, policy.Files, priv, ov)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, rev0, _ := Build(ctx, policy.Files, priv, nil)
+	_, rev2, _ := Build(ctx, policy.Files, priv, ov)
+	if rev == rev0 || rev != rev2 {
+		t.Errorf("revision must follow content: %s %s %s", rev0, rev, rev2)
+	}
+	b, err := read(tarball, pub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := b.Data["aisec"].(map[string]any)["rules"].(map[string]any)["version"]; got != "release-7" {
+		t.Errorf("bundle rules version %v", got)
+	}
+
+	ev, err := NewEvaluator(ctx, policy.Files, ov)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := map[string]any{"channel": "ai_gateway", "direction": "request", "principal": map[string]any{"type": "user", "id": "u"},
+		"destination": map[string]any{"app_id": "chatgpt", "sanction": "sanctioned", "region": "ID"},
+		"content":     map[string]any{"sensitivity": "public", "classes": []any{}}}
+	d, err := ev.Eval(ctx, in)
+	if err != nil || d.Action != "block" || !slices.Equal(d.MatchedRules, []string{"block-chatgpt"}) {
+		t.Errorf("eval: %+v %v", d, err)
+	}
+	bad := Overrides{"aisec.rules": map[string]any{"version": "x", "items": []any{map[string]any{"id": "a", "when": []any{}, "action": "block", "reason": "R"}}}}
+	if _, err := NewEvaluator(ctx, policy.Files, bad); !errors.Is(err, ErrInvalidRules) {
+		t.Errorf("invalid rules: %v", err)
 	}
 }

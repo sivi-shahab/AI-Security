@@ -39,4 +39,4 @@ Satu PDP untuk semua PEP (prinsip P2).
 - Provision Secret `policy-bundle-signing` + ConfigMap `policy-bundle-pubkey` (idealnya key di Vault/HSM); PrometheusRule butuh prometheus-operator.
 - Alert ke SIEM (ticket 19); decision log ke event pipeline (ticket 15), sekarang ke stdout.
 - Bench p99 di hardware target (ticket 21). Opsi bila gagal: strip anotasi schema saat build (~25% lebih cepat di validasi).
-- Bundle dibangun sekali saat start; `Server.Publish` sudah siap untuk perubahan runtime (ticket 12).
+- ~~Bundle dibangun sekali saat start~~: ticket 12 membangun bundle dari release di Postgres pada setiap replica.

@@ -45,6 +45,97 @@ type Event struct {
 	Classes       []Class  `json:"classes"`
 	ContentHash   string   `json:"content_hash"`
 	Snippet       string   `json:"snippet,omitempty"`
+
+	// PDP input metadata (no content), for replaying the decision in policy simulation. Pointers: absent ≠ zero.
+	PrincipalType       string   `json:"principal_type,omitempty"`
+	PrincipalGroups     []string `json:"principal_groups,omitempty"`
+	PrincipalRisk       *float64 `json:"principal_risk,omitempty"`
+	Device              string   `json:"device,omitempty"`
+	AccountContext      string   `json:"account_context,omitempty"`
+	Sanction            string   `json:"sanction,omitempty"`
+	Region              string   `json:"region,omitempty"`
+	TrainsOnData        *bool    `json:"trains_on_data,omitempty"`
+	Sensitivity         string   `json:"sensitivity,omitempty"`
+	InjectionScore      *float64 `json:"injection_score,omitempty"`
+	JailbreakScore      *float64 `json:"jailbreak_score,omitempty"`
+	ExfilScore          *float64 `json:"exfil_score,omitempty"`
+	VolumeRatio         *float64 `json:"volume_ratio,omitempty"`
+	Tokens              *int     `json:"tokens,omitempty"`
+	AgentTool           string   `json:"agent_tool,omitempty"`
+	ToolRisk            string   `json:"tool_risk,omitempty"`
+	AgentAction         string   `json:"agent_action,omitempty"`
+	AgentRegistered     *bool    `json:"agent_registered,omitempty"`
+	SessionInjectionMax *float64 `json:"session_injection_max,omitempty"`
+	HITLAvailable       *bool    `json:"hitl_available,omitempty"`
+}
+
+// PDPInput rebuilds the canonical PDP input (policy/aisec/schema) from the event's metadata. ok is false when the
+// event lacks what every decision needs (sensitivity, sanction, region): such events cannot be replayed.
+func (e Event) PDPInput() (in map[string]any, ok bool) {
+	if e.Sensitivity == "" || e.Sanction == "" || e.Region == "" {
+		return nil, false
+	}
+	put := func(m map[string]any, k string, v any) {
+		switch v := v.(type) {
+		case string:
+			if v != "" {
+				m[k] = v
+			}
+		case *float64:
+			if v != nil {
+				m[k] = *v
+			}
+		case *bool:
+			if v != nil {
+				m[k] = *v
+			}
+		case *int:
+			if v != nil {
+				m[k] = *v
+			}
+		case []string:
+			if len(v) > 0 {
+				m[k] = v
+			}
+		}
+	}
+	ptype := e.PrincipalType
+	if ptype == "" {
+		ptype = "user"
+	}
+	principal := map[string]any{"type": ptype, "id": e.PrincipalID}
+	put(principal, "groups", e.PrincipalGroups)
+	put(principal, "risk", e.PrincipalRisk)
+	put(principal, "device", e.Device)
+	put(principal, "account_context", e.AccountContext)
+	dest := map[string]any{"app_id": e.AppID, "sanction": e.Sanction, "region": e.Region}
+	put(dest, "trains_on_data", e.TrainsOnData)
+	classes := make([]any, 0, len(e.Classes))
+	for _, c := range e.Classes {
+		conf := c.Confidence
+		if conf == 0 {
+			conf = 1 // omitted confidence: the PEP reported the class, so treat it as certain
+		}
+		classes = append(classes, map[string]any{"type": c.Type, "count": c.Count, "confidence": conf})
+	}
+	content := map[string]any{"sensitivity": e.Sensitivity, "classes": classes}
+	put(content, "injection_score", e.InjectionScore)
+	put(content, "jailbreak_score", e.JailbreakScore)
+	put(content, "exfil_score", e.ExfilScore)
+	put(content, "volume_ratio", e.VolumeRatio)
+	put(content, "tokens", e.Tokens)
+	in = map[string]any{"channel": e.Channel, "direction": e.Direction, "principal": principal, "destination": dest, "content": content}
+	if e.AgentID != "" {
+		agent := map[string]any{"agent_id": e.AgentID}
+		put(agent, "tool", e.AgentTool)
+		put(agent, "tool_risk", e.ToolRisk)
+		put(agent, "action", e.AgentAction)
+		put(agent, "registered", e.AgentRegistered)
+		put(agent, "session_injection_max", e.SessionInjectionMax)
+		put(agent, "hitl_available", e.HITLAvailable)
+		in["agent"] = agent
+	}
+	return in, true
 }
 
 type Class struct {

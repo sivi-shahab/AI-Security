@@ -41,3 +41,4 @@ Semua PEP menulis `decision_event` ke satu pipeline.
 - Warm tier di node khusus (allocation) bila cluster punya node warm; index per tenant bila ada tier yang butuh.
 - Pertimbangkan bump Go 1.26 agar bisa memakai OPA/franz-go terbaru.
 - `DECISION_EVENT` di Postgres untuk event incident/sampling: ticket 18.
+- Ticket 12 menambah field metadata input PDP (opsional) ke `decision_event` v1 dan mapping OpenSearch, untuk simulasi policy.

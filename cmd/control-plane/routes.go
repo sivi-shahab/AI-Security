@@ -7,6 +7,7 @@ import (
 	"aisec/internal/authz"
 	"aisec/internal/identity"
 	"aisec/internal/incident"
+	"aisec/internal/lifecycle"
 )
 
 // deps are the handlers and stores routes need. Nil stores are fine for the route matrix test: it never calls a
@@ -15,6 +16,8 @@ type deps struct {
 	bundles, scim, metrics http.Handler
 	incidents              *incident.Store
 	identity               *identity.Store
+	policies               *lifecycle.Store
+	simulator              *lifecycle.Simulator
 }
 
 // routes is the complete admin API. Everything not listed as Public needs a permission (deny by default);
@@ -28,4 +31,5 @@ func routes(rt *authz.Router, d deps) {
 	}
 	incident.Routes(rt, d.incidents, time.Now)
 	identity.Routes(rt, d.identity)
+	lifecycle.Routes(rt, d.policies, d.simulator, time.Now)
 }

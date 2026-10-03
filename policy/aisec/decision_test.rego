@@ -214,3 +214,50 @@ test_residency_does_not_apply_to_inbound if {
 		decide(with_patch({"direction": d, "destination": {"app_id": "x", "sanction": "unsanctioned", "region": "US"}, "content": {"sensitivity": "restricted", "classes": []}})).action == "allow"
 	}
 }
+
+# --- FR-POL-7 exceptions -------------------------------------------------------------------------
+
+exc(rules, scope, expires) := {"id": "ex1", "rules": rules, "scope": scope, "expires_at": expires}
+
+pii_to_unsanctioned := with_patch({
+	"principal": {"type": "user", "id": "u-hmac-1", "groups": ["SG-RESEARCH"]},
+	"destination": {"app_id": "deepseek", "sanction": "unsanctioned", "region": "ID"},
+	"content": {"sensitivity": "confidential", "classes": cls("PII_ID.NIK")},
+})
+
+decide_with(inp, exceptions) := r if {
+	r := decision.result with input as inp with data.aisec.exceptions.items as exceptions
+}
+
+test_exception_lifts_rule_in_scope if {
+	future := "2099-01-01T00:00:00Z"
+	every scope in [{"group": "SG-RESEARCH"}, {"app_id": "deepseek"}, {"principal_id": "u-hmac-1"}, {"group": "SG-RESEARCH", "app_id": "deepseek"}] {
+		r := decide_with(pii_to_unsanctioned, [exc(["tpl.pii-id-to-unsanctioned"], scope, future)])
+		r.action == "allow"
+		r.exempted_rules == ["tpl.pii-id-to-unsanctioned"]
+		not "tpl.pii-id-to-unsanctioned" in r.matched_rules
+	}
+}
+
+test_exception_does_not_apply if {
+	future := "2099-01-01T00:00:00Z"
+	every ex in [
+		exc(["tpl.pii-id-to-unsanctioned"], {"group": "SG-OTHER"}, future), # other scope
+		exc(["tpl.pii-id-to-unsanctioned"], {"group": "SG-RESEARCH", "app_id": "chatgpt"}, future), # every key must match
+		exc(["tpl.pii-id-to-unsanctioned"], {}, future), # empty scope is not "everyone"
+		exc(["tpl.pii-id-to-unsanctioned"], {"group": "SG-RESEARCH"}, "2020-01-01T00:00:00Z"), # expired
+		exc(["tpl.secret-to-any-ai"], {"group": "SG-RESEARCH"}, future), # other rule
+	] {
+		r := decide_with(pii_to_unsanctioned, [ex])
+		r.action == "block"
+		r.exempted_rules == []
+	}
+}
+
+test_exception_only_lifts_named_rule if {
+	inp := object.union(pii_to_unsanctioned, {"content": {"sensitivity": "confidential", "classes": array.concat(cls("PII_ID.NIK"), cls("SECRET.AWS_KEY"))}})
+	r := decide_with(inp, [exc(["tpl.pii-id-to-unsanctioned"], {"group": "SG-RESEARCH"}, "2099-01-01T00:00:00Z")])
+	r.action == "block"
+	r.matched_rules == ["tpl.secret-to-any-ai"]
+	r.exempted_rules == ["tpl.pii-id-to-unsanctioned"]
+}

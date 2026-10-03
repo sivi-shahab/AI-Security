@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "aisec/decision_event/v1",
-  "title": "decision_event v1 (spec §6 DECISION_EVENT, §10.2). Metadata, HMAC hashes and a redacted snippet only: never raw content.",
+  "title": "decision_event v1 (spec §6 DECISION_EVENT, §10.2). Metadata, HMAC hashes and a redacted snippet only: never raw content. The optional flat fields are the PDP input metadata, so policy simulation (ticket 12) can replay the decision.",
   "type": "object",
   "additionalProperties": false,
   "required": ["event_id", "tenant_id", "ts", "trace_id", "channel", "direction", "principal_id", "app_id", "action", "reason_codes", "policy_version", "risk_score", "risk_version", "classes", "content_hash"],
@@ -36,6 +36,26 @@
       }
     },
     "content_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$", "description": "HMAC-SHA256 of the content with the tenant pepper."},
+    "principal_type": {"enum": ["user", "agent", "service"]},
+    "principal_groups": {"type": "array", "items": {"type": "string"}},
+    "principal_risk": {"type": "number", "minimum": 0, "maximum": 1},
+    "device": {"enum": ["managed", "unmanaged", "unknown"]},
+    "account_context": {"enum": ["corporate", "personal", "unknown"]},
+    "sanction": {"enum": ["sanctioned", "tolerated", "unsanctioned", "blocked", "under_review"]},
+    "region": {"type": "string", "pattern": "^([A-Z]{2}|unknown)$"},
+    "trains_on_data": {"type": "boolean"},
+    "sensitivity": {"enum": ["public", "internal", "confidential", "restricted"]},
+    "injection_score": {"type": "number", "minimum": 0, "maximum": 1},
+    "jailbreak_score": {"type": "number", "minimum": 0, "maximum": 1},
+    "exfil_score": {"type": "number", "minimum": 0, "maximum": 1},
+    "volume_ratio": {"type": "number", "minimum": 0},
+    "tokens": {"type": "integer", "minimum": 0},
+    "agent_tool": {"type": "string"},
+    "tool_risk": {"enum": ["low", "medium", "high"]},
+    "agent_action": {"enum": ["read", "write", "external_send", "financial"]},
+    "agent_registered": {"type": "boolean"},
+    "session_injection_max": {"type": "number", "minimum": 0, "maximum": 1},
+    "hitl_available": {"type": "boolean"},
     "snippet": {"type": "string", "maxLength": 200, "description": "Already redacted by the PEP, e.g. 'NIK [REDACTED:PII_ID.NIK]'."}
   }
 }

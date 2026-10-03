@@ -105,3 +105,27 @@ spec:
           labels: {severity: critical, category: security}
           annotations:
             summary: the break-glass account is in use; confirm the emergency and review the audit log
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: aisec-policy-lifecycle
+  namespace: aisec
+spec:
+  groups:
+    - name: policy-lifecycle
+      rules:
+        # Spec §13: publish/rollback reaches every PEP within 60 s. Replicas serving different releases for over a
+        # minute means one stopped following (NOTIFY and poll both failing).
+        - alert: PolicyReleaseDiverged
+          expr: max(policy_release_current) - min(policy_release_current) > 0
+          for: 1m
+          labels: {severity: critical}
+          annotations:
+            summary: control-plane replicas serve different policy releases
+        # FR-POL-7: owners are told 7 days ahead (audit entry policy.exception.expiring, forwarded to the SIEM).
+        - alert: PolicyExceptionsExpiring
+          expr: max(policy_exceptions_expiring) > 0
+          labels: {severity: info}
+          annotations:
+            summary: "{{ $value }} policy exception(s) expire within 7 days"

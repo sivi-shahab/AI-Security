@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"net/http"
@@ -33,13 +34,21 @@ const (
 	maxWait     = 5 * time.Minute
 )
 
-// Build bundles every non-test module and data.json in fsys, injects the forbidden log fields for decision-log
-// masking (data.system.log.forbidden), refuses rule sets with errors, and signs with a PEM EC P-256 key.
-func Build(ctx context.Context, fsys fs.FS, signingKeyPEM string) (tarball []byte, revision string, err error) {
-	b := bundle.Bundle{Data: map[string]any{}}
-	opts := []func(*rego.Rego){}
+// Overrides replace data documents of fsys by dotted path, e.g. "aisec.rules" and "aisec.exceptions" from a
+// policy release (ticket 12).
+type Overrides map[string]any
+
+// source is fsys's modules and data with overrides applied, plus a content hash (the bundle revision).
+type source struct {
+	modules  []bundle.ModuleFile
+	data     map[string]any
+	revision string
+}
+
+func load(fsys fs.FS, overrides Overrides) (source, error) {
+	src := source{data: map[string]any{}}
 	h := sha256.New()
-	err = fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
+	err := fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
@@ -51,31 +60,55 @@ func Build(ctx context.Context, fsys fs.FS, signingKeyPEM string) (tarball []byt
 		case strings.HasSuffix(p, "_test.rego"), !strings.HasSuffix(p, ".rego") && path.Base(p) != "data.json":
 			return nil
 		case strings.HasSuffix(p, ".rego"):
-			b.Modules = append(b.Modules, bundle.ModuleFile{URL: "/" + p, Path: "/" + p, Raw: raw})
-			opts = append(opts, rego.Module(p, string(raw)))
+			src.modules = append(src.modules, bundle.ModuleFile{URL: "/" + p, Path: "/" + p, Raw: raw})
 		default:
 			var v any
 			if err := json.Unmarshal(raw, &v); err != nil {
 				return fmt.Errorf("%s: %w", p, err)
 			}
-			setPath(b.Data, strings.Split(path.Dir(p), "/"), v)
+			if _, overridden := overrides[strings.ReplaceAll(path.Dir(p), "/", ".")]; overridden {
+				return nil
+			}
+			setPath(src.data, strings.Split(path.Dir(p), "/"), v)
 		}
 		_, _ = fmt.Fprintf(h, "%s\x00%s\x00", p, raw) // hash.Hash writes never fail
 		return nil
 	})
 	if err != nil {
-		return nil, "", err
+		return source{}, err
 	}
+	for k, v := range overrides {
+		setPath(src.data, strings.Split(k, "."), v)
+	}
+	ov, _ := json.Marshal(overrides) // map keys are sorted: stable
 	forbidden := privacy.Forbidden()
-	setPath(b.Data, []string{"system", "log", "forbidden"}, forbidden)
-	_, _ = fmt.Fprintf(h, "forbidden\x00%v", forbidden)
-	revision = hex.EncodeToString(h.Sum(nil))[:16]
+	setPath(src.data, []string{"system", "log", "forbidden"}, forbidden)
+	_, _ = fmt.Fprintf(h, "overrides\x00%s\x00forbidden\x00%v", ov, forbidden)
+	src.revision = hex.EncodeToString(h.Sum(nil))[:16]
+	return src, nil
+}
 
-	if err := checkRules(ctx, b.Data, opts); err != nil {
+func (src source) regoOpts(query string) []func(*rego.Rego) {
+	opts := []func(*rego.Rego){rego.Query(query), rego.Store(inmem.NewFromObject(src.data))}
+	for _, m := range src.modules {
+		opts = append(opts, rego.Module(m.Path, string(m.Raw)))
+	}
+	return opts
+}
+
+// Build bundles every non-test module and data.json in fsys (with overrides), injects the forbidden log fields
+// for decision-log masking (data.system.log.forbidden), refuses rule sets with errors, and signs with a PEM EC
+// P-256 key. The revision is a content hash: replicas building the same release serve the same ETag.
+func Build(ctx context.Context, fsys fs.FS, signingKeyPEM string, overrides Overrides) (tarball []byte, revision string, err error) {
+	src, err := load(fsys, overrides)
+	if err != nil {
 		return nil, "", err
 	}
-
-	b.Manifest = bundle.Manifest{Revision: revision, Roots: &[]string{"aisec", "system"}}
+	if err := Validate(ctx, src); err != nil {
+		return nil, "", err
+	}
+	b := bundle.Bundle{Data: src.data, Modules: src.modules}
+	b.Manifest = bundle.Manifest{Revision: src.revision, Roots: &[]string{"aisec", "system"}}
 	if err := b.GenerateSignature(bundle.NewSigningConfig(signingKeyPEM, Alg, ""), KeyID, false); err != nil {
 		return nil, "", fmt.Errorf("sign bundle: %w", err)
 	}
@@ -83,14 +116,13 @@ func Build(ctx context.Context, fsys fs.FS, signingKeyPEM string) (tarball []byt
 	if err := bundle.NewWriter(&buf).Write(b); err != nil {
 		return nil, "", err
 	}
-	return buf.Bytes(), revision, nil
+	return buf.Bytes(), src.revision, nil
 }
 
-// checkRules fails on any decision rule_errors or risk config_errors: a typo must never become a rule that silently
+// Validate fails on any decision rule_errors or risk config_errors: a typo must never become a rule that silently
 // never matches, nor weights that push a score out of 0-100.
-func checkRules(ctx context.Context, data map[string]any, opts []func(*rego.Rego)) error {
-	opts = append(opts, rego.Query("data.aisec.decision.rule_errors | data.aisec.risk.config_errors"), rego.Store(inmem.NewFromObject(data)))
-	rs, err := rego.New(opts...).Eval(ctx)
+func Validate(ctx context.Context, src source) error {
+	rs, err := rego.New(src.regoOpts("data.aisec.decision.rule_errors | data.aisec.risk.config_errors")...).Eval(ctx)
 	if err != nil {
 		return fmt.Errorf("evaluate rule_errors: %w", err)
 	}
@@ -98,9 +130,56 @@ func checkRules(ctx context.Context, data map[string]any, opts []func(*rego.Rego
 		return fmt.Errorf("rule_errors undefined: are aisec/decision.rego and aisec/risk/risk.rego in the bundle?")
 	}
 	if errs, _ := rs[0].Expressions[0].Value.([]any); len(errs) > 0 {
-		return fmt.Errorf("rule set invalid: %v", errs)
+		return fmt.Errorf("%w: %v", ErrInvalidRules, errs)
 	}
 	return nil
+}
+
+// ErrInvalidRules marks a rule set the engine refuses (duplicate id, unknown op/action/mode, …).
+var ErrInvalidRules = errors.New("rule set invalid")
+
+// Evaluator runs the decision engine in-process on fsys with overrides: simulation and rule validation use the
+// exact modules the sidecars run.
+type Evaluator struct{ pq rego.PreparedEvalQuery }
+
+func NewEvaluator(ctx context.Context, fsys fs.FS, overrides Overrides) (*Evaluator, error) {
+	src, err := load(fsys, overrides)
+	if err != nil {
+		return nil, err
+	}
+	if err := Validate(ctx, src); err != nil {
+		return nil, err
+	}
+	pq, err := rego.New(src.regoOpts("data.aisec.decision.result")...).PrepareForEval(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &Evaluator{pq}, nil
+}
+
+// Decision is the part of the PDP result simulation compares.
+type Decision struct {
+	Action       string   `json:"action"`
+	ReasonCodes  []string `json:"reason_codes"`
+	MatchedRules []string `json:"matched_rules"`
+	MonitorRules []string `json:"monitor_rules"`
+}
+
+// Eval decides one canonical input. Safe for concurrent use.
+func (e *Evaluator) Eval(ctx context.Context, input any) (Decision, error) {
+	rs, err := e.pq.Eval(ctx, rego.EvalInput(input))
+	if err != nil {
+		return Decision{}, err
+	}
+	if len(rs) != 1 || len(rs[0].Expressions) != 1 {
+		return Decision{}, errors.New("decision undefined")
+	}
+	raw, err := json.Marshal(rs[0].Expressions[0].Value)
+	if err != nil {
+		return Decision{}, err
+	}
+	var d Decision
+	return d, json.Unmarshal(raw, &d)
 }
 
 func setPath(m map[string]any, keys []string, v any) {
