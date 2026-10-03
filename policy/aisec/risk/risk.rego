@@ -8,6 +8,7 @@ package aisec.risk
 
 import rego.v1
 
+import data.aisec.agent
 import data.aisec.dest
 
 cfg := data.aisec.risk.config
@@ -102,7 +103,7 @@ pan_or_bulk_nik(n) if nik_count >= n
 # registered omitted = not registered (fail closed).
 floor_override["unregistered-agent-high-tool"] := ov["unregistered-agent-high-tool"].score if {
 	high_tool_call
-	object.get(input.agent, "registered", false) != true
+	agent.registered != true
 }
 
 applied := sort(object.keys(set_override) | object.keys(floor_override))

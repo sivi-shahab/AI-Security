@@ -421,3 +421,9 @@ func (s *Store) Summarize(ctx context.Context, since, now time.Time) (Summary, e
 	sum.Top, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (Incident, error) { return scanIncident(r) })
 	return sum, err
 }
+
+// Handle is the events.Handler that folds decision events into incidents.
+func (s *Store) Handle(ctx context.Context, e events.Event, payload []byte) error {
+	_, _, err := s.Ingest(ctx, e, payload, time.Now())
+	return err
+}

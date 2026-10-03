@@ -15,6 +15,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"aisec/internal/agents"
 	"aisec/internal/audit"
 	"aisec/internal/catalog"
 	"aisec/internal/events"
@@ -99,6 +100,10 @@ func TestReconciliation(t *testing.T) {
 		t.Fatal(err)
 	}
 	apps, err := catalog.Open(ctx, db, tenant, ls)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg, err := agents.Open(ctx, db, tenant, ls)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +198,7 @@ func TestReconciliation(t *testing.T) {
 		}
 		defer func() { _ = resp.Body.Close() }()
 		return io.ReadAll(resp.Body)
-	}, Apps: apps, Incidents: incidents, Policies: ls}
+	}, Apps: apps, Incidents: incidents, Policies: ls, Agents: reg}
 	rep, err := src.Compute(ctx, now)
 	if err != nil {
 		t.Fatal(err)

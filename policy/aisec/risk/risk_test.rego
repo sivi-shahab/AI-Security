@@ -96,6 +96,9 @@ unsanctioned := {"app_id": "x", "sanction": "unsanctioned", "region": "ID"}
 
 personal := {"type": "user", "id": "u1", "account_context": "personal"}
 
+# Ticket 27: registration comes from the registry, not from the PEP's "registered" claim.
+registry := {"version": 1, "items": {"a": {"status": "active", "risk_tier": "high"}, "s": {"status": "suspended", "risk_tier": "high"}}}
+
 high_tool(extra) := object.union({"agent_id": "a", "tool": "payments.transfer", "tool_risk": "high", "registered": true}, extra)
 
 pan_nik := "pan-or-bulk-nik-to-personal-or-unsanctioned"
@@ -146,14 +149,14 @@ override_cases := [
 	],
 	[
 		"unregistered-agent-high-tool",
-		{"direction": "tool_call", "agent": object.remove(high_tool({}), ["registered"])},
+		{"direction": "tool_call", "agent": high_tool({"agent_id": "rogue"})}, # not in the registry, whatever it claims
 		{"direction": "tool_call", "agent": high_tool({})},
 		90,
 	],
 	[
 		"unregistered-agent-high-tool",
-		{"direction": "tool_call", "agent": high_tool({"registered": false})},
-		{"direction": "request", "agent": high_tool({"registered": false})},
+		{"direction": "tool_call", "agent": high_tool({"agent_id": "s"})}, # in the registry but suspended
+		{"direction": "request", "agent": high_tool({"agent_id": "s"})},
 		90,
 	],
 ]
@@ -161,9 +164,9 @@ override_cases := [
 test_every_override if {
 	every c in override_cases {
 		fired := patch(c[1])
-		risk.applied == [c[0]] with input as fired
-		risk.score == c[3] with input as fired
-		missed := risk.applied with input as patch(c[2])
+		risk.applied == [c[0]] with input as fired with data.aisec.agents as registry
+		risk.score == c[3] with input as fired with data.aisec.agents as registry
+		missed := risk.applied with input as patch(c[2]) with data.aisec.agents as registry
 		not c[0] in missed
 	}
 	# the table covers every configured override

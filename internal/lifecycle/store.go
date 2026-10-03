@@ -55,16 +55,27 @@ type Store struct {
 	tenant string
 	fsys   fs.FS
 
-	// Extra adds other modules' documents to every release (the app catalog, ticket 16), read in the releasing
-	// transaction. Set before the first release is cut.
-	Extra func(ctx context.Context, tx pgx.Tx) (policysvc.Overrides, error)
+	extras []func(ctx context.Context, tx pgx.Tx) (policysvc.Overrides, error)
+}
+
+// AddExtra makes another module's documents (app catalog, agent registry) part of every release, read in the
+// releasing transaction. Call it at startup, before changes are made.
+func (s *Store) AddExtra(f func(ctx context.Context, tx pgx.Tx) (policysvc.Overrides, error)) {
+	s.extras = append(s.extras, f)
 }
 
 func (s *Store) extra(ctx context.Context, tx pgx.Tx) (policysvc.Overrides, error) {
-	if s.Extra == nil {
-		return policysvc.Overrides{}, nil
+	ov := policysvc.Overrides{}
+	for _, f := range s.extras {
+		more, err := f(ctx, tx)
+		if err != nil {
+			return nil, err
+		}
+		for k, v := range more {
+			ov[k] = v
+		}
 	}
-	return s.Extra(ctx, tx)
+	return ov, nil
 }
 
 // Open applies the schema and, on an empty database, activates the built-in FR-POL-8 templates as policy "builtin"

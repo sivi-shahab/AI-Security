@@ -298,3 +298,30 @@ test_catalog_change_flips_decision if {
 	r.destination.sanction == "blocked"
 	r.risk_score > before.risk_score
 }
+
+# --- ticket 27: the agent registry decides registration and status ---------------------------------------
+
+agents := {"version": 2, "items": {
+	"invoice-bot": {"status": "active", "risk_tier": "high"},
+	"orphan-bot": {"status": "quarantined", "risk_tier": "medium"},
+}}
+
+agent_call(id, claims) := with_patch({
+	"direction": "tool_call",
+	"agent": object.union({"agent_id": id, "tool": "erp.read", "tool_risk": "low"}, claims),
+	"content": {"sensitivity": "internal", "classes": []},
+})
+
+test_registry_decides_registration if {
+	active := decision.result with input as agent_call("invoice-bot", {}) with data.aisec.agents as agents
+	active.action == "allow"
+	not "tpl.agent-not-active" in active.matched_rules
+	# A quarantined agent is blocked even if the PEP claims it is registered.
+	q := decision.result with input as agent_call("orphan-bot", {"registered": true}) with data.aisec.agents as agents
+	q.action == "block"
+	q.reason_codes == ["AGENT_NOT_ACTIVE"]
+	# Unknown agents are unregistered (risk floor applies to high tools), not blocked outright.
+	u := decision.result with input as agent_call("shadow-bot", {"registered": true, "tool_risk": "high"}) with data.aisec.agents as agents
+	u.risk_overrides == ["unregistered-agent-high-tool"]
+	u.risk_score >= 90
+}

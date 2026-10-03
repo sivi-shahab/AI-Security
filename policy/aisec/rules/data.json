@@ -2,6 +2,15 @@
   "version": "builtin-1",
   "items": [
     {
+      "id": "tpl.agent-not-active",
+      "description": "FR-AGT-1: agent quarantined (mis. tanpa owner) atau suspended di registry = block semua aksinya.",
+      "when": [
+        {"field": "agent.status", "op": "in", "value": ["quarantined", "suspended"]}
+      ],
+      "action": "block",
+      "reason": "AGENT_NOT_ACTIVE"
+    },
+    {
       "id": "tpl.blocked-app",
       "description": "FR-DISC-4: app berstatus blocked di katalog = block (semua sensitivity, onshore maupun offshore).",
       "when": [

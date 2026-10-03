@@ -8,6 +8,7 @@ package aisec.decision
 
 import rego.v1
 
+import data.aisec.agent
 import data.aisec.cond
 import data.aisec.dest
 import data.aisec.risk
@@ -121,9 +122,16 @@ value(field) := object.get(dest.destination, array.slice(path, 1, count(path)), 
 	path[0] == "destination"
 }
 
+# agent.* comes from the registry-corrected agent (aisec.agent).
+value(field) := object.get(agent.agent, array.slice(path, 1, count(path)), null) if {
+	path := split(field, ".")
+	path[0] == "agent"
+}
+
 value(field) := object.get(input, split(field, "."), null) if {
 	field != "risk_score"
 	not startswith(field, "destination.")
+	not startswith(field, "agent.")
 }
 
 # Rule-set validation. The bundle builder refuses to publish while this is non-empty, so a typo in a

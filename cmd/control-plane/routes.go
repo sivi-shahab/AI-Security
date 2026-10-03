@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"aisec/internal/agents"
 	"aisec/internal/authz"
 	"aisec/internal/catalog"
 	"aisec/internal/identity"
@@ -23,6 +24,7 @@ type deps struct {
 	apps                   *catalog.Store
 	feedKey                []byte
 	posture                posture.Sources
+	agents                 *agents.Store
 }
 
 // routes is the complete admin API. Everything not listed as Public needs a permission (deny by default);
@@ -39,4 +41,5 @@ func routes(rt *authz.Router, d deps) {
 	lifecycle.Routes(rt, d.policies, d.simulator, time.Now)
 	catalog.Routes(rt, d.apps, d.feedKey, time.Now)
 	posture.Routes(rt, d.posture, time.Now)
+	agents.Routes(rt, d.agents, time.Now)
 }

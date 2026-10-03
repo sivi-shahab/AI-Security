@@ -11,6 +11,7 @@ import (
 	"sort"
 	"time"
 
+	"aisec/internal/agents"
 	"aisec/internal/catalog"
 	"aisec/internal/incident"
 	"aisec/internal/lifecycle"
@@ -119,6 +120,7 @@ type Sources struct {
 	Apps      *catalog.Store
 	Incidents *incident.Store
 	Policies  *lifecycle.Store
+	Agents    *agents.Store
 }
 
 // Day is one point of the trend.
@@ -159,7 +161,8 @@ type Report struct {
 		ReviewOverdue int            `json:"review_overdue"`
 		NotInCatalog  int            `json:"observed_not_in_catalog"`
 	} `json:"inventory"`
-	Metrics []Metric `json:"metrics"`
+	Agents  agents.Summary `json:"agents"`
+	Metrics []Metric       `json:"metrics"`
 }
 
 const (
@@ -301,12 +304,17 @@ func (src Sources) Compute(ctx context.Context, now time.Time) (Report, error) {
 		v := sum / float64(n)
 		r.Overall = &v
 	}
-	r.Metrics = metrics(apps, r.Incidents)
+	reg, err := src.Agents.Summarize(ctx)
+	if err != nil {
+		return r, err
+	}
+	r.Agents = reg
+	r.Metrics = metrics(apps, r.Incidents, reg)
 	return r, nil
 }
 
 // metrics are the §1.5 targets M1 can measure; the rest say which ticket measures them.
-func metrics(apps []catalog.View, inc incident.Summary) []Metric {
+func metrics(apps []catalog.View, inc incident.Summary, reg agents.Summary) []Metric {
 	top := apps // already sorted by events, observed apps included
 	if len(top) > 100 {
 		top = top[:100]
@@ -333,6 +341,9 @@ func metrics(apps []catalog.View, inc incident.Summary) []Metric {
 		mttd.Value = &v
 	}
 	m = append(m, mttd)
+	orphans := float64(len(reg.WithoutOwnerOrPolicy))
+	m = append(m, Metric{Name: "Active agents without owner and policy", Target: "0", Value: &orphans, Status: "measured",
+		Note: fmt.Sprintf("%d registered agents; policy = tool allow-list; owner-less agents are quarantined automatically", reg.Total)})
 	for _, nm := range []struct{ name, target, note string }{
 		{"Visible AI traffic coverage (discovered / total AI egress)", ">= 95% via proxy", "needs the proxy log baseline (ticket 03)"},
 		{"Precision of P0 sensitive-data detectors", ">= 0.95", "eval corpus (ticket 04) and detectors (08, 09)"},
@@ -341,7 +352,6 @@ func metrics(apps []catalog.View, inc incident.Summary) []Metric {
 		{"Attack success rate drop with gateway (AgentDojo-style)", ">= 70% lower", "gateway (ticket 13) and agent suite"},
 		{"Added inline latency p95 (text <= 8K tokens)", "<= 80 ms", "gateway load test (ticket 21)"},
 		{"Breach report preparation time", "<= 24 h", "breach workflow (ticket 26)"},
-		{"Active agents without owner and policy", "0", "agent registry (ticket 27)"},
 	} {
 		m = append(m, Metric{Name: nm.name, Target: nm.target, Status: "not_measured", Note: nm.note})
 	}

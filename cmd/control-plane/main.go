@@ -15,6 +15,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/sr"
 
+	"aisec/internal/agents"
 	"aisec/internal/audit"
 	"aisec/internal/authz"
 	"aisec/internal/catalog"
@@ -68,20 +69,10 @@ func main() {
 	if err != nil {
 		fail("incident store", err)
 	}
-	kc, err := kgo.NewClient(kgo.SeedBrokers(strings.Split(os.Getenv("KAFKA_BROKERS"), ",")...),
-		kgo.ConsumerGroup(incident.Group), kgo.ConsumeTopics(events.Topic), kgo.DisableAutoCommit())
-	if err != nil {
-		fail("kafka client", err)
-	}
 	rc, err := sr.NewClient(sr.URLs(os.Getenv("SCHEMA_REGISTRY_URL")))
 	if err != nil {
 		fail("schema registry client", err)
 	}
-	go func() {
-		if err := incident.Consume(ctx, kc, &events.Decoder{SR: rc}, incidents, log); err != nil {
-			fail("incident consumer stopped", err)
-		}
-	}()
 	go func() {
 		for t := time.NewTicker(time.Hour); ctx.Err() == nil; <-t.C {
 			if n, err := incidents.PurgeExpired(ctx, time.Now()); err != nil {
@@ -108,22 +99,16 @@ func main() {
 	if err != nil {
 		fail("app catalog", err)
 	}
+	registry, err := agents.Open(ctx, db, os.Getenv("TENANT_ID"), policies)
+	if err != nil {
+		fail("agent registry", err)
+	}
 	bundles := &policysvc.Server{}
 	releaser := &lifecycle.Releaser{Store: policies, Server: bundles, FS: policy.Files, SigningKey: string(key), Log: log, Poll: 15 * time.Second}
 	if err := releaser.Sync(ctx); err != nil {
 		fail("build policy bundle", err)
 	}
 	go releaser.Run(ctx)
-	usage, err := kgo.NewClient(kgo.SeedBrokers(strings.Split(os.Getenv("KAFKA_BROKERS"), ",")...),
-		kgo.ConsumerGroup(catalog.Group), kgo.ConsumeTopics(events.Topic), kgo.DisableAutoCommit())
-	if err != nil {
-		fail("kafka client (usage)", err)
-	}
-	go func() {
-		if err := catalog.Consume(ctx, usage, &events.Decoder{SR: rc}, apps, log); err != nil {
-			fail("app usage consumer stopped", err)
-		}
-	}()
 	corpus, err := lifecycle.LoadCorpus(policy.Files)
 	if err != nil {
 		fail("simulation corpus", err)
@@ -133,6 +118,11 @@ func main() {
 	simulator := &lifecycle.Simulator{Store: policies, Source: search.Events, Corpus: corpus, MaxEvents: 100_000, Log: log}
 	go func() {
 		for t := time.NewTicker(time.Hour); ctx.Err() == nil; <-t.C {
+			if n, err := registry.Reconcile(ctx); err != nil {
+				log.Error("agent owner reconcile", "err", err)
+			} else if n > 0 {
+				log.Info("agents quarantined: no active owner", "count", n)
+			}
 			if err := apps.PurgeUsage(ctx, time.Now()); err != nil {
 				log.Error("purge app usage", "err", err)
 			}
@@ -199,11 +189,26 @@ func main() {
 			_, _ = fmt.Fprintf(w, "# TYPE policy_exceptions_expiring gauge\npolicy_exceptions_expiring %d\n", n)
 		}
 	})
+	// One consumer group feeds every control-plane module that learns from decision events.
+	kc, err := kgo.NewClient(kgo.SeedBrokers(strings.Split(os.Getenv("KAFKA_BROKERS"), ",")...),
+		kgo.ConsumerGroup(consumerGroup), kgo.ConsumeTopics(events.Topic), kgo.DisableAutoCommit())
+	if err != nil {
+		fail("kafka client", err)
+	}
+	go func() {
+		if err := events.Consume(ctx, kc, &events.Decoder{SR: rc}, log, incidents.Handle, apps.Handle, registry.Handle); err != nil {
+			fail("decision event consumer stopped", err)
+		}
+	}()
+
 	routes(rt, deps{bundles: bundles, scim: ids.SCIMHandler(scimHash, os.Getenv("PUBLIC_URL")), metrics: metrics, incidents: incidents, identity: ids,
 		policies: policies, simulator: simulator, apps: apps, feedKey: feedKey,
-		posture: posture.Sources{Search: search.Search, Apps: apps, Incidents: incidents, Policies: policies}})
+		posture: posture.Sources{Search: search.Search, Apps: apps, Incidents: incidents, Policies: policies, Agents: registry},
+		agents:  registry})
 	server.Run("control-plane", rt.Mux)
 	cancel()
 	kc.Close()
-	usage.Close()
 }
+
+// consumerGroup is the control-plane's group on the decision event topic (incidents, app usage, shadow agents).
+const consumerGroup = "control-plane"

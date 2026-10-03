@@ -44,7 +44,7 @@ func Open(ctx context.Context, db *pgxpool.Pool, tenant string, policies *lifecy
 		return nil, fmt.Errorf("apply catalog schema: %w", err)
 	}
 	s := &Store{db: db, tenant: tenant, policies: policies}
-	policies.Extra = s.releaseDoc
+	policies.AddExtra(s.releaseDoc)
 	seed, err := ParseFeed(seedFeed)
 	if err != nil {
 		return nil, fmt.Errorf("seed catalog: %w", err)

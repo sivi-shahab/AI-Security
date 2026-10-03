@@ -140,3 +140,22 @@ func notFound(err error) error {
 	}
 	return err
 }
+
+// UserActive reports whether userName is a provisioned, active user, inside the caller's transaction (agent
+// owners, ticket 27). Unknown users are not active.
+func UserActive(ctx context.Context, tx pgx.Tx, userName string) (bool, error) {
+	var active bool
+	err := tx.QueryRow(ctx, "SELECT active FROM identity.users WHERE lower(user_name) = lower($1)", userName).Scan(&active)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	return active, err
+}
+
+// UserExists reports whether userName is provisioned at all, active or not (agent identities must not be user
+// accounts, ticket 27).
+func UserExists(ctx context.Context, tx pgx.Tx, userName string) (bool, error) {
+	var exists bool
+	err := tx.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM identity.users WHERE lower(user_name) = lower($1))", userName).Scan(&exists)
+	return exists, err
+}
