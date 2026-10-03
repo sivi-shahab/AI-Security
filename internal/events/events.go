@@ -67,6 +67,9 @@ type Event struct {
 	AgentRegistered     *bool    `json:"agent_registered,omitempty"`
 	SessionInjectionMax *float64 `json:"session_injection_max,omitempty"`
 	HITLAvailable       *bool    `json:"hitl_available,omitempty"`
+	ScopeViolations     *int     `json:"scope_violations,omitempty"`
+	RateExceeded        *bool    `json:"rate_exceeded,omitempty"`
+	ChainDepth          *int     `json:"chain_depth,omitempty"`
 }
 
 // PDPInput rebuilds the canonical PDP input (policy/aisec/schema) from the event's metadata. ok is false when the
@@ -133,6 +136,9 @@ func (e Event) PDPInput() (in map[string]any, ok bool) {
 		put(agent, "registered", e.AgentRegistered)
 		put(agent, "session_injection_max", e.SessionInjectionMax)
 		put(agent, "hitl_available", e.HITLAvailable)
+		put(agent, "scope_violations", e.ScopeViolations)
+		put(agent, "rate_exceeded", e.RateExceeded)
+		put(agent, "chain_depth", e.ChainDepth)
 		in["agent"] = agent
 	}
 	return in, true

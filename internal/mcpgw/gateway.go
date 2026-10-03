@@ -1,0 +1,674 @@
+// Package mcpgw is the MCP gateway (spec §4.8 FR-AGT-3..5, FR-AGT-8; §7.2): the PEP between AI agents and MCP
+// tool servers over Streamable HTTP.
+//
+// Per request: verify the agent's access token for this server's resource URI, map its workload identity to the
+// registry entry, inspect tools/call arguments (DLP + injection, scopes, rate, delegation depth), ask the PDP,
+// swap the token for a short-lived downstream one (RFC 8693; the agent's token never leaves the gateway),
+// forward, then inspect tool results and resource reads the same way before the agent sees them. Every decision
+// is a decision_event carrying the trace_id, which is the session audit (prompt → tool_call → result).
+package mcpgw
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log/slog"
+	"mime"
+	"net/http"
+	"path"
+	"regexp"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/google/uuid"
+
+	"aisec/internal/detect"
+	"aisec/internal/events"
+	"aisec/internal/toolscope"
+)
+
+// Server is one MCP tool server behind the gateway, reached at /mcp/{name}.
+type Server struct {
+	Name     string `json:"name"`
+	Upstream string `json:"upstream"` // the tool server's MCP endpoint
+	Audience string `json:"audience"` // audience of the exchanged downstream token
+	AppID    string `json:"app_id"`   // destination for the PDP (catalog id when the server is in the app catalog)
+	Sanction string `json:"sanction"` // used when the app is not in the catalog
+	Region   string `json:"region"`
+}
+
+type Gateway struct {
+	BaseURL string // public origin; a server's resource URI is BaseURL + "/mcp/" + name
+	Issuer  string // authorization server advertised in protected resource metadata
+	Servers map[string]Server
+
+	Verify   func(ctx context.Context, raw, resource string) (Token, error)
+	Exchange func(ctx context.Context, subject, audience string) (string, error)
+	Agent    func(ctx context.Context, identity string) (*RegistryAgent, error)
+	Decide   func(ctx context.Context, input map[string]any) (Decision, error)
+	Emit     func(ctx context.Context, e events.Event) error
+	Upstream *http.Client
+
+	Pepper      []byte // tenant HMAC key for principal ids and content hashes (spec §10.2)
+	TenantID    string
+	DefaultRate int // tools/call per minute per agent and tool when the registry sets no rate_per_minute
+	Now         func() time.Time
+	Log         *slog.Logger
+
+	mu    sync.Mutex
+	taint map[string]taint
+	rates map[string]window
+}
+
+const (
+	maxRequest = 4 << 20
+	maxResult  = 16 << 20
+	// taintTTL: how long injection seen by an agent keeps its high-risk tools behind approval.
+	taintTTL = 30 * time.Minute
+)
+
+func (g *Gateway) Routes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /.well-known/oauth-protected-resource/mcp/{server}", g.metadata)
+	for _, m := range []string{"POST", "GET", "DELETE"} {
+		mux.HandleFunc(m+" /mcp/{server}", g.serve)
+	}
+}
+
+func (g *Gateway) resource(name string) string { return g.BaseURL + "/mcp/" + name }
+
+// metadata is RFC 9728 protected resource metadata: where an MCP client gets a token for this server.
+func (g *Gateway) metadata(w http.ResponseWriter, r *http.Request) {
+	srv, ok := g.Servers[r.PathValue("server")]
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"resource":                 g.resource(srv.Name),
+		"authorization_servers":    []string{g.Issuer},
+		"bearer_methods_supported": []string{"header"},
+		"resource_name":            srv.Name,
+	})
+}
+
+// challenge is the MCP authorization 401: the client discovers the authorization server from resource_metadata.
+func (g *Gateway) challenge(w http.ResponseWriter, srv Server, errCode string) {
+	v := fmt.Sprintf(`Bearer resource_metadata=%q`, g.BaseURL+"/.well-known/oauth-protected-resource/mcp/"+srv.Name)
+	if errCode != "" {
+		v += fmt.Sprintf(`, error=%q`, errCode)
+	}
+	w.Header().Set("WWW-Authenticate", v)
+	http.Error(w, "unauthorized", http.StatusUnauthorized)
+}
+
+// call is one agent request through the gateway.
+type call struct {
+	g        *Gateway
+	srv      Server
+	agentID  string
+	tools    map[string]*toolEntry
+	depth    int
+	trace    string
+	taintKey string
+}
+
+type toolEntry struct {
+	Risk   string
+	Scopes map[string]any
+}
+
+// pending is the request a response answers: which tool, or a resource read.
+type pending struct {
+	id   json.RawMessage
+	tool string // "resources/read" for resource reads
+	seen bool
+}
+
+var traceparent = regexp.MustCompile(`^[0-9a-f]{2}-([0-9a-f]{32})-[0-9a-f]{16}-[0-9a-f]{2}$`)
+
+func (g *Gateway) serve(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	srv, ok := g.Servers[r.PathValue("server")]
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	raw, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if !ok || raw == "" {
+		g.challenge(w, srv, "")
+		return
+	}
+	tok, err := g.Verify(ctx, raw, g.resource(srv.Name))
+	if err != nil {
+		g.Log.Info("token rejected", "server", srv.Name, "err", err)
+		g.challenge(w, srv, "invalid_token")
+		return
+	}
+	reg, err := g.Agent(ctx, tok.Identity)
+	if err != nil {
+		g.Log.Error("registry lookup", "err", err)
+		http.Error(w, "policy unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	c := &call{g: g, srv: srv, agentID: tok.Identity, tools: map[string]*toolEntry{}, depth: tok.ChainDepth}
+	if reg != nil {
+		c.agentID = reg.ID
+		for _, t := range reg.Tools {
+			c.tools[t.Name] = &toolEntry{t.Risk, t.Scopes}
+		}
+	}
+	// Taint follows the agent's trace when it propagates one (one task across tool servers); otherwise the agent.
+	c.taintKey = c.agentID
+	if m := traceparent.FindStringSubmatch(r.Header.Get("Traceparent")); m != nil {
+		c.trace = m[1]
+		c.taintKey += "|" + c.trace
+	} else {
+		c.trace = randomHex(16)
+	}
+
+	var body []byte
+	var pend *pending
+	if r.Method == http.MethodPost {
+		if body, err = io.ReadAll(http.MaxBytesReader(w, r.Body, maxRequest)); err != nil {
+			http.Error(w, "request too large", http.StatusRequestEntityTooLarge)
+			return
+		}
+		var msg message
+		if bytes.HasPrefix(bytes.TrimSpace(body), []byte("[")) || json.Unmarshal(body, &msg) != nil {
+			http.Error(w, "one JSON-RPC message per request", http.StatusBadRequest)
+			return
+		}
+		switch msg.Method {
+		case "tools/call":
+			out, deny := c.toolCall(ctx, &msg)
+			if deny != nil {
+				writeJSON(w, http.StatusOK, deny)
+				return
+			}
+			body = out
+			pend = &pending{id: msg.ID, tool: toolName(msg.Params)}
+		case "resources/read":
+			pend = &pending{id: msg.ID, tool: "resources/read"}
+		}
+	}
+
+	down, err := g.Exchange(ctx, raw, srv.Audience)
+	if err != nil {
+		g.Log.Error("token exchange", "server", srv.Name, "err", err)
+		http.Error(w, "downstream credential unavailable", http.StatusBadGateway)
+		return
+	}
+	req, err := http.NewRequestWithContext(ctx, r.Method, srv.Upstream, bytes.NewReader(body))
+	if err != nil {
+		http.Error(w, "bad upstream", http.StatusBadGateway)
+		return
+	}
+	// Allow-list, not deny-list: the agent's Authorization, cookies and anything else never reach the tool server.
+	for _, h := range []string{"Accept", "Content-Type", "Mcp-Session-Id", "Mcp-Protocol-Version", "Last-Event-Id"} {
+		if v := r.Header.Get(h); v != "" {
+			req.Header.Set(h, v)
+		}
+	}
+	req.Header.Set("Authorization", "Bearer "+down)
+	req.Header.Set("Traceparent", "00-"+c.trace+"-"+randomHex(8)+"-01")
+	resp, err := g.Upstream.Do(req)
+	if err != nil {
+		g.Log.Error("upstream", "server", srv.Name, "err", err)
+		http.Error(w, "tool server unavailable", http.StatusBadGateway)
+		return
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		// The downstream credential is the gateway's business; its challenge means nothing to the agent.
+		g.Log.Error("tool server refused the exchanged token", "server", srv.Name, "status", resp.StatusCode)
+		http.Error(w, "tool server refused the gateway credential", http.StatusBadGateway)
+		return
+	}
+	for _, h := range []string{"Mcp-Session-Id", "Mcp-Protocol-Version"} {
+		if v := resp.Header.Get(h); v != "" {
+			w.Header().Set(h, v)
+		}
+	}
+	mt, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+	switch mt {
+	case "application/json":
+		b, err := io.ReadAll(io.LimitReader(resp.Body, maxResult+1))
+		if err != nil || len(b) > maxResult {
+			http.Error(w, "tool result too large", http.StatusBadGateway)
+			return
+		}
+		out := c.inspectPayload(ctx, b, pend)
+		if pend != nil && !pend.seen {
+			// A result the gateway could not read must not reach the agent unread.
+			out, _ = json.Marshal(rpcError(pend.id, "tool server response not inspectable", nil))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(resp.StatusCode)
+		_, _ = w.Write(out)
+	case "text/event-stream":
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.WriteHeader(resp.StatusCode)
+		c.stream(ctx, w, resp.Body, pend)
+	default:
+		if resp.StatusCode < 300 && resp.StatusCode != http.StatusAccepted && resp.ContentLength != 0 {
+			http.Error(w, "unsupported tool server response", http.StatusBadGateway)
+			return
+		}
+		// Acks and HTTP errors: status only. An error page is uninspected text and never reaches the agent.
+		if resp.StatusCode == http.StatusAccepted {
+			w.WriteHeader(resp.StatusCode)
+			return
+		}
+		http.Error(w, http.StatusText(resp.StatusCode), resp.StatusCode)
+	}
+}
+
+// stream relays an SSE response event by event, inspecting each JSON-RPC message before the agent sees it.
+func (c *call) stream(ctx context.Context, w http.ResponseWriter, body io.Reader, pend *pending) {
+	fl, _ := w.(http.Flusher)
+	sc := bufio.NewScanner(body)
+	sc.Buffer(make([]byte, 64<<10), maxResult)
+	var lines []string
+	flush := func() {
+		if len(lines) == 0 {
+			return
+		}
+		var data, other []string
+		for _, l := range lines {
+			if v, ok := strings.CutPrefix(l, "data:"); ok {
+				data = append(data, strings.TrimPrefix(v, " "))
+			} else {
+				other = append(other, l)
+			}
+		}
+		if len(data) > 0 {
+			lines = append(other, "data: "+string(c.inspectPayload(ctx, []byte(strings.Join(data, "\n")), pend)))
+		}
+		_, _ = io.WriteString(w, strings.Join(lines, "\n")+"\n\n")
+		if fl != nil {
+			fl.Flush()
+		}
+		lines = nil
+	}
+	for sc.Scan() {
+		if sc.Text() == "" {
+			flush()
+		} else {
+			lines = append(lines, sc.Text())
+		}
+	}
+	flush()
+}
+
+// --- JSON-RPC ---
+
+type message struct {
+	JSONRPC string          `json:"jsonrpc"`
+	ID      json.RawMessage `json:"id,omitempty"`
+	Method  string          `json:"method,omitempty"`
+	Params  json.RawMessage `json:"params,omitempty"`
+	Result  json.RawMessage `json:"result,omitempty"`
+	Error   json.RawMessage `json:"error,omitempty"`
+}
+
+func rpcError(id json.RawMessage, msg string, data any) message {
+	e, _ := json.Marshal(map[string]any{"code": -32001, "message": msg, "data": data})
+	return message{JSONRPC: "2.0", ID: id, Error: e}
+}
+
+func toolName(params json.RawMessage) string {
+	var p struct {
+		Name string `json:"name"`
+	}
+	_ = json.Unmarshal(params, &p)
+	return p.Name
+}
+
+func sameID(a, b json.RawMessage) bool {
+	var x, y bytes.Buffer
+	return json.Compact(&x, a) == nil && json.Compact(&y, b) == nil && bytes.Equal(x.Bytes(), y.Bytes())
+}
+
+// toolCall inspects a tools/call request. It returns the (possibly redacted) body to forward, or the JSON-RPC
+// error to answer with instead.
+func (c *call) toolCall(ctx context.Context, msg *message) ([]byte, *message) {
+	var params map[string]any
+	if json.Unmarshal(msg.Params, &params) != nil {
+		m := rpcError(msg.ID, "invalid tools/call params", nil)
+		return nil, &m
+	}
+	name, _ := params["name"].(string)
+	args, _ := params["arguments"].(map[string]any)
+	if args == nil {
+		args = map[string]any{}
+	}
+	t := c.tools[name]
+	agent := map[string]any{"tool": name, "tool_risk": "high", "scope_violations": 0} // unknown tools count as high
+	limit := c.g.DefaultRate
+	if t != nil {
+		agent["tool_risk"] = t.Risk
+		agent["scope_violations"] = len(toolscope.Violations(t.Scopes, args))
+		limit = toolscope.RatePerMinute(t.Scopes, limit)
+	}
+	agent["rate_exceeded"] = c.g.overRate(c.agentID+"|"+name, limit)
+
+	in := inspectable(args)
+	d, eid, err := c.decide(ctx, "tool_call", name, in, agent)
+	if err != nil {
+		m := rpcError(msg.ID, "policy unavailable", nil)
+		return nil, &m
+	}
+	switch d.Action {
+	case "allow", "warn":
+		return mustJSON(msg), nil
+	case "redact", "tokenize": // ponytail: tokenize redacts until the token vault (ticket 24)
+		in.redact(d)
+		params["arguments"] = args
+		msg.Params = mustJSON(params)
+		return mustJSON(msg), nil
+	}
+	// block, quarantine, and require_approval: no HITL yet (ticket 30), so approval cannot be had = deny.
+	m := rpcError(msg.ID, "blocked by policy", map[string]any{"decision_id": eid, "action": d.Action, "reason_codes": d.ReasonCodes})
+	return nil, &m
+}
+
+// inspectPayload inspects one JSON-RPC message from the tool server and returns what to relay. Responses to
+// tools/call and resources/read, error messages, and (on GET streams) anything shaped like tool content or
+// prompt messages are untrusted text on its way to a model.
+func (c *call) inspectPayload(ctx context.Context, b []byte, pend *pending) []byte {
+	var msg message
+	if json.Unmarshal(b, &msg) != nil || len(msg.Result) == 0 && len(msg.Error) == 0 {
+		return b // requests and notifications from the server
+	}
+	matched := pend != nil && sameID(msg.ID, pend.id)
+	if matched {
+		pend.seen = true
+	}
+	isErr := len(msg.Result) == 0
+	field := &msg.Result
+	if isErr {
+		field = &msg.Error
+	}
+	var obj map[string]any
+	if json.Unmarshal(*field, &obj) != nil {
+		return mustJSON(rpcError(msg.ID, "tool server response not inspectable", nil)) // MCP results are objects
+	}
+	tool := ""
+	switch {
+	case matched:
+		tool = pend.tool
+	case isErr || obj["content"] != nil || obj["contents"] != nil || obj["messages"] != nil:
+	default:
+		return b // initialize, tools/list, …: tool descriptions are ticket 29's
+	}
+	in := inspectable(obj)
+	agent := map[string]any{"tool": tool}
+	if t := c.tools[tool]; t != nil {
+		agent["tool_risk"] = t.Risk
+	}
+	d, eid, err := c.decide(ctx, "tool_result", tool, in, agent)
+	switch {
+	case err != nil:
+		return mustJSON(rpcError(msg.ID, "policy unavailable", nil))
+	case d.Action == "allow" || d.Action == "warn":
+		return b
+	case d.Action == "redact" || d.Action == "tokenize":
+		in.redact(d)
+		*field = mustJSON(obj)
+		return mustJSON(msg)
+	}
+	data := map[string]any{"decision_id": eid, "action": d.Action, "reason_codes": d.ReasonCodes}
+	if isErr || tool == "resources/read" {
+		return mustJSON(rpcError(msg.ID, "blocked by policy", data))
+	}
+	// A tool execution error the model can read (MCP isError), carrying no byte of the blocked content.
+	msg.Result = mustJSON(map[string]any{"isError": true, "content": []any{map[string]any{
+		"type": "text", "text": fmt.Sprintf("[AISec] tool result blocked by policy %v (decision %s)", d.ReasonCodes, eid)}}})
+	return mustJSON(msg)
+}
+
+// --- inspection ---
+
+// content is every string leaf of a JSON value, joined for one detector pass; set writes a leaf back in place.
+type content struct {
+	leaves []leaf
+	text   string
+	raw    []byte // canonical JSON (sorted keys), for the content hash
+	res    detect.Result
+}
+
+type leaf struct {
+	off int
+	s   string
+	set func(string)
+}
+
+func inspectable(v any) *content {
+	c := &content{raw: mustJSON(v)}
+	var b strings.Builder
+	var walk func(any)
+	add := func(s string, set func(string)) {
+		if b.Len() > 0 {
+			b.WriteString("\n\n") // no detector joins digits or words across a blank line
+		}
+		c.leaves = append(c.leaves, leaf{b.Len(), s, set})
+		b.WriteString(s)
+	}
+	walk = func(v any) {
+		switch x := v.(type) {
+		case map[string]any:
+			keys := make([]string, 0, len(x))
+			for k := range x {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				if s, ok := x[k].(string); ok {
+					add(s, func(n string) { x[k] = n })
+				} else {
+					walk(x[k])
+				}
+			}
+		case []any:
+			for i, e := range x {
+				if s, ok := e.(string); ok {
+					add(s, func(n string) { x[i] = n })
+				} else {
+					walk(e)
+				}
+			}
+		}
+	}
+	walk(v)
+	c.text = b.String()
+	c.res = detect.Scan(c.text)
+	return c
+}
+
+// redact applies the decision's redact/tokenize obligations (class globs); none listed = every class found.
+func (c *content) redact(d Decision) {
+	var globs []string
+	for _, o := range d.Obligations {
+		if o.Type == "redact" || o.Type == "tokenize" {
+			globs = append(globs, o.Classes...)
+		}
+	}
+	want := func(typ string) bool {
+		if len(globs) == 0 {
+			return true
+		}
+		for _, g := range globs {
+			if ok, _ := path.Match(g, typ); ok {
+				return true
+			}
+		}
+		return false
+	}
+	for _, l := range c.leaves {
+		var ms []detect.Match
+		for _, m := range c.res.Matches {
+			if m.Span[0] >= l.off && m.Span[1] <= l.off+len(l.s) && want(m.Type) {
+				m.Span = [2]int{m.Span[0] - l.off, m.Span[1] - l.off}
+				ms = append(ms, m)
+			}
+		}
+		if len(ms) > 0 {
+			l.set(detect.Redact(l.s, ms))
+		}
+	}
+}
+
+// decide builds the canonical PDP input, asks the PDP, records the session taint and emits the decision event.
+// The event id doubles as the decision id the agent sees.
+func (c *call) decide(ctx context.Context, direction, tool string, in *content, agent map[string]any) (Decision, string, error) {
+	g := c.g
+	taint := g.taintOf(c.taintKey)
+	g.addTaint(c.taintKey, in.res.Injection.Score)
+	agent["agent_id"] = c.agentID
+	agent["hitl_available"] = false
+	agent["session_injection_max"] = taint
+	agent["chain_depth"] = c.depth
+	classes := make([]any, 0, len(in.res.Classes))
+	evClasses := make([]events.Class, 0, len(in.res.Classes))
+	for _, cl := range in.res.Classes {
+		classes = append(classes, map[string]any{"type": cl.Type, "count": cl.Count, "confidence": cl.Confidence})
+		evClasses = append(evClasses, events.Class{Type: cl.Type, Count: cl.Count, Confidence: cl.Confidence})
+	}
+	principal := g.hmac("agent:" + c.agentID)
+	input := map[string]any{
+		"channel":     "mcp_gateway",
+		"direction":   direction,
+		"principal":   map[string]any{"type": "agent", "id": principal},
+		"destination": map[string]any{"app_id": c.srv.AppID, "sanction": c.srv.Sanction, "region": c.srv.Region},
+		"content":     map[string]any{"sensitivity": in.res.Sensitivity, "classes": classes, "injection_score": in.res.Injection.Score},
+		"agent":       agent,
+	}
+	d, err := g.Decide(ctx, input)
+	if err != nil {
+		g.Log.Error("PDP", "direction", direction, "err", err)
+		return Decision{}, "", err
+	}
+	eid := uuid.NewString()
+	score, hitl := in.res.Injection.Score, false
+	e := events.Event{
+		EventID: eid, TenantID: g.TenantID, TS: g.Now().UTC().Format(time.RFC3339Nano), TraceID: c.trace,
+		Channel: "mcp_gateway", Direction: direction, PrincipalID: principal, AppID: c.srv.AppID, AgentID: c.agentID,
+		Action: d.Action, ReasonCodes: nonNil(d.ReasonCodes), MatchedRules: d.MatchedRules, PolicyVersion: d.PolicyVersion,
+		RiskScore: d.RiskScore, RiskOverrides: d.RiskOverrides, RiskVersion: d.RiskVersion, Classes: evClasses,
+		ContentHash: g.hmac(string(in.raw)), PrincipalType: "agent", Sanction: d.Destination.Sanction, Region: d.Destination.Region,
+		TrainsOnData: d.Destination.TrainsOnData, Sensitivity: in.res.Sensitivity, InjectionScore: &score, AgentTool: tool,
+		SessionInjectionMax: &taint, HITLAvailable: &hitl, ChainDepth: &c.depth,
+	}
+	if r, ok := agent["tool_risk"].(string); ok {
+		e.ToolRisk = r
+	}
+	if n, ok := agent["scope_violations"].(int); ok {
+		e.ScopeViolations = &n
+	}
+	if x, ok := agent["rate_exceeded"].(bool); ok {
+		e.RateExceeded = &x
+	}
+	if err := g.Emit(ctx, e); err != nil {
+		g.Log.Error("decision event", "err", err) // ponytail: logged, not retried; a local spool if Kafka outages bite
+	}
+	return d, eid, nil
+}
+
+// --- per-replica state (ponytail: in memory; shared store when replicas must agree on rates and taint) ---
+
+type taint struct {
+	max float64
+	at  time.Time
+}
+
+type window struct {
+	start time.Time
+	n     int
+}
+
+func (g *Gateway) taintOf(key string) float64 {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if t, ok := g.taint[key]; ok && g.Now().Sub(t.at) < taintTTL {
+		return t.max
+	}
+	return 0
+}
+
+func (g *Gateway) addTaint(key string, score float64) {
+	if score <= 0 {
+		return
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	now := g.Now()
+	if g.taint == nil || len(g.taint) > 100000 {
+		g.taint = map[string]taint{}
+	}
+	t := g.taint[key]
+	if now.Sub(t.at) >= taintTTL {
+		t.max = 0
+	}
+	g.taint[key] = taint{max(t.max, score), now}
+}
+
+func (g *Gateway) overRate(key string, limit int) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	now := g.Now()
+	if g.rates == nil || len(g.rates) > 100000 {
+		g.rates = map[string]window{}
+	}
+	w := g.rates[key]
+	if now.Sub(w.start) >= time.Minute {
+		w = window{start: now}
+	}
+	w.n++
+	g.rates[key] = w
+	return w.n > limit
+}
+
+// --- helpers ---
+
+func (g *Gateway) hmac(s string) string {
+	m := hmac.New(sha256.New, g.Pepper)
+	m.Write([]byte(s))
+	return hex.EncodeToString(m.Sum(nil))
+}
+
+func randomHex(n int) string {
+	b := make([]byte, n)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+func mustJSON(v any) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(err) // only ever called on values decoded from JSON or built here
+	}
+	return b
+}
+
+func nonNil(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
+}
+
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
+}

@@ -56,6 +56,9 @@
     "agent_registered": {"type": "boolean"},
     "session_injection_max": {"type": "number", "minimum": 0, "maximum": 1},
     "hitl_available": {"type": "boolean"},
+    "scope_violations": {"type": "integer", "minimum": 0},
+    "rate_exceeded": {"type": "boolean"},
+    "chain_depth": {"type": "integer", "minimum": 0},
     "snippet": {"type": "string", "maxLength": 200, "description": "Already redacted by the PEP, e.g. 'NIK [REDACTED:PII_ID.NIK]'."}
   }
 }

@@ -2,7 +2,9 @@ package aisec.decision_test
 
 import rego.v1
 
+import data.aisec.agent
 import data.aisec.decision
+import data.aisec.mcp
 
 base := {
 	"channel": "ai_gateway",
@@ -302,8 +304,11 @@ test_catalog_change_flips_decision if {
 # --- ticket 27: the agent registry decides registration and status ---------------------------------------
 
 agents := {"version": 2, "items": {
-	"invoice-bot": {"status": "active", "risk_tier": "high"},
-	"orphan-bot": {"status": "quarantined", "risk_tier": "medium"},
+	"invoice-bot": {"status": "active", "risk_tier": "high", "identity": "spiffe://bank.local/invoice-bot", "tools": [
+		{"name": "erp.read", "risk": "low"},
+		{"name": "payments.transfer", "risk": "high", "scopes": {"amount": {"max": 25000000}}},
+	]},
+	"orphan-bot": {"status": "quarantined", "risk_tier": "medium", "identity": "orphan-client", "tools": [{"name": "erp.read", "risk": "low"}]},
 }}
 
 agent_call(id, claims) := with_patch({
@@ -320,8 +325,67 @@ test_registry_decides_registration if {
 	q := decision.result with input as agent_call("orphan-bot", {"registered": true}) with data.aisec.agents as agents
 	q.action == "block"
 	q.reason_codes == ["AGENT_NOT_ACTIVE"]
-	# Unknown agents are unregistered (risk floor applies to high tools), not blocked outright.
+	# Unknown agents are unregistered (risk floor applies to high tools); with no allow-list they may call no tool.
 	u := decision.result with input as agent_call("shadow-bot", {"registered": true, "tool_risk": "high"}) with data.aisec.agents as agents
 	u.risk_overrides == ["unregistered-agent-high-tool"]
 	u.risk_score >= 90
+	u.reason_codes == ["TOOL_NOT_ALLOWED"]
+}
+
+# --- ticket 28: MCP gateway -----------------------------------------------------------------------------
+
+test_tool_allow_list_and_registry_risk if {
+	# Not on the allow-list: blocked, even for an active agent.
+	r := decision.result with input as agent_call("invoice-bot", {"tool": "hr.export"}) with data.aisec.agents as agents
+	r.reason_codes == ["TOOL_NOT_ALLOWED"]
+	# The registry's tool risk replaces the PEP's claim: payments.transfer is high whatever the PEP says.
+	h := agent.agent with input as agent_call("invoice-bot", {"tool": "payments.transfer", "tool_risk": "low"}) with data.aisec.agents as agents
+	h.tool_risk == "high"
+	h.tool_allowed
+	# Outside tool_call (e.g. an agent's own LLM request) the allow-list does not apply.
+	l := decision.result with input as object.union(agent_call("invoice-bot", {"tool": "hr.export"}), {"direction": "request"}) with data.aisec.agents as agents
+	l.action == "allow"
+}
+
+test_tool_scope_rate_and_depth if {
+	every patch, reason in {
+		{"scope_violations": 1}: "TOOL_SCOPE_VIOLATION",
+		{"rate_exceeded": true}: "TOOL_RATE_LIMITED",
+		{"chain_depth": 4}: "AGENT_CHAIN_TOO_DEEP",
+	} {
+		r := decision.result with input as agent_call("invoice-bot", patch) with data.aisec.agents as agents
+		r.reason_codes == [reason]
+		r.action == "block"
+	}
+	ok := decision.result with input as agent_call("invoice-bot", {"scope_violations": 0, "rate_exceeded": false, "chain_depth": 3}) with data.aisec.agents as agents
+	ok.action == "allow"
+}
+
+test_indirect_injection_in_tool_result if {
+	inp := object.union(agent_call("invoice-bot", {}), {"direction": "tool_result", "content": {"sensitivity": "internal", "classes": [], "injection_score": 0.72}})
+	r := decision.result with input as inp with data.aisec.agents as agents
+	r.action == "block"
+	r.reason_codes == ["INDIRECT_INJECTION"]
+	# The same score in the agent's own request stays under the direct threshold (0.9).
+	q := decision.result with input as object.union(inp, {"direction": "request"}) with data.aisec.agents as agents
+	q.action == "allow"
+}
+
+test_injection_tainted_session_needs_approval_for_high_tool if {
+	tainted := {"tool": "payments.transfer", "session_injection_max": 0.6}
+	r := decision.result with input as agent_call("invoice-bot", tainted) with data.aisec.agents as agents
+	r.action == "require_approval"
+	r.reason_codes == ["INJECTION_THEN_HIGH_TOOL"]
+	# Low tools stay usable in a tainted session; a clean session may use the high tool.
+	low := decision.result with input as agent_call("invoice-bot", {"session_injection_max": 0.6}) with data.aisec.agents as agents
+	low.action == "allow"
+	clean := decision.result with input as agent_call("invoice-bot", {"tool": "payments.transfer", "session_injection_max": 0.1}) with data.aisec.agents as agents
+	clean.action == "allow"
+}
+
+test_mcp_lookup_by_workload_identity if {
+	a := mcp.agent with input as {"identity": "spiffe://bank.local/invoice-bot"} with data.aisec.agents as agents
+	a.agent_id == "invoice-bot"
+	a.tools[1].scopes.amount.max == 25000000
+	not mcp.agent with input as {"identity": "unknown"} with data.aisec.agents as agents
 }

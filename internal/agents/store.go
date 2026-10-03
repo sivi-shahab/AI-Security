@@ -22,6 +22,7 @@ import (
 	"aisec/internal/identity"
 	"aisec/internal/lifecycle"
 	"aisec/internal/policysvc"
+	"aisec/internal/toolscope"
 )
 
 //go:embed schema.sql
@@ -32,7 +33,8 @@ var (
 	ErrInvalid  = errors.New("invalid")
 )
 
-// Tool is one allow-listed tool. Scopes are parameter limits (FR-AGT-4, enforced by the MCP gateway, ticket 28).
+// Tool is one allow-listed tool. Scopes are parameter limits and a rate (FR-AGT-4, format in toolscope), enforced
+// by the MCP gateway.
 type Tool struct {
 	Name   string         `json:"name"`
 	Risk   string         `json:"risk"` // low | medium | high
@@ -117,6 +119,9 @@ func (a Agent) validate() error {
 			return bad("tool %q: unique name and risk low|medium|high", t.Name)
 		}
 		seen[t.Name] = true
+		if err := toolscope.Validate(t.Scopes); err != nil {
+			return bad("tool %q: %v", t.Name, err)
+		}
 	}
 	return nil
 }
@@ -191,7 +196,8 @@ func (s *Store) Get(ctx context.Context, id string) (Agent, error) {
 	return as[0], nil
 }
 
-// releaseDoc is data.aisec.agents: what the PDP needs per agent (aisec/agent).
+// releaseDoc is data.aisec.agents: what the PDP needs per agent (aisec/agent), and what the MCP gateway needs to
+// map a workload identity to its agent and enforce tool scopes (aisec/mcp).
 func (s *Store) releaseDoc(ctx context.Context, tx pgx.Tx) (policysvc.Overrides, error) {
 	as, err := list(ctx, tx, "")
 	if err != nil {
@@ -199,11 +205,7 @@ func (s *Store) releaseDoc(ctx context.Context, tx pgx.Tx) (policysvc.Overrides,
 	}
 	items := map[string]any{}
 	for _, a := range as {
-		tools := make([]string, len(a.Tools))
-		for i, t := range a.Tools {
-			tools[i] = t.Name
-		}
-		items[a.ID] = map[string]any{"status": a.Status, "risk_tier": a.RiskTier, "tools": tools}
+		items[a.ID] = map[string]any{"status": a.Status, "risk_tier": a.RiskTier, "identity": a.Identity.Ref, "tools": a.Tools}
 	}
 	return policysvc.Overrides{"aisec.agents": map[string]any{"version": len(as), "items": items}}, nil
 }

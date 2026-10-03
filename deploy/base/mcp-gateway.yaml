@@ -1,0 +1,85 @@
+# MCP gateway (spec §4.8 FR-AGT-3..5, §7.2): PEP between AI agents and MCP tool servers, with its own PDP sidecar.
+# Secret mcp-gateway (out of band): MCP_BASE_URL, OIDC_ISSUER, STS_CLIENT_ID, STS_CLIENT_SECRET (Keycloak client
+# allowed to do token exchange for each tool server's audience), KAFKA_BROKERS, SCHEMA_REGISTRY_URL, TENANT_ID,
+# TENANT_PEPPER. ConfigMap mcp-servers (out of band): servers.json, a list of
+#   {"name", "upstream", "audience", "app_id", "sanction", "region"}; agents reach each at MCP_BASE_URL/mcp/<name>.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-gateway
+  labels: {app: mcp-gateway}
+spec:
+  # ponytail: rate limits and injection taint are per replica; one replica keeps them exact until a shared store.
+  replicas: 1
+  selector:
+    matchLabels: {app: mcp-gateway}
+  template:
+    metadata:
+      labels: {app: mcp-gateway}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: mcp-gateway
+          image: registry.local/aisec/mcp-gateway:dev
+          imagePullPolicy: Always
+          envFrom: [{secretRef: {name: mcp-gateway}}]
+          env:
+            - {name: MCP_SERVERS_FILE, value: /config/servers.json}
+          ports: [{containerPort: 8080, name: http}]
+          readinessProbe: {httpGet: {path: /healthz, port: http}}
+          livenessProbe: {httpGet: {path: /healthz, port: http}}
+          volumeMounts:
+            - {name: mcp-servers, mountPath: /config, readOnly: true}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: "1", memory: 512Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+        # PDP sidecar (FR-POL-1): verifies the Policy Service bundle signature before activating it.
+        - name: opa
+          image: registry.local/aisec/opa:dev
+          imagePullPolicy: Always
+          args:
+            - run
+            - --server
+            - --addr=127.0.0.1:8181  # only the PEP in this pod may ask for decisions
+            - --diagnostic-addr=:8282
+            - --config-file=/config/opa.yaml
+            - --set-file=keys.aisec-policy.key=/keys/bundle.pub
+            - --optimize-store-for-read-speed
+          ports: [{containerPort: 8282, name: opa-diag}]
+          # Not ready until a verified bundle is active: no PEP traffic on an empty policy.
+          readinessProbe: {httpGet: {path: "/health?bundles", port: opa-diag}}
+          livenessProbe: {httpGet: {path: /health, port: opa-diag}}
+          volumeMounts:
+            - {name: opa-config, mountPath: /config, readOnly: true}
+            - {name: bundle-pubkey, mountPath: /keys, readOnly: true}
+            - {name: opa-cache, mountPath: /var/opa}
+          resources:
+            requests: {cpu: 100m, memory: 64Mi}
+            limits: {cpu: "1", memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+      volumes:
+        - {name: mcp-servers, configMap: {name: mcp-servers}}
+        - {name: opa-config, configMap: {name: opa-config}}
+        - {name: bundle-pubkey, configMap: {name: policy-bundle-pubkey}}
+        - {name: opa-cache, emptyDir: {}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-gateway
+  labels: {app: mcp-gateway}
+spec:
+  selector: {app: mcp-gateway}
+  ports: [{port: 80, targetPort: http, name: http}]

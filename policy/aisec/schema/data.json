@@ -70,7 +70,10 @@
           "hitl_available": {"type": "boolean"},
           "action": {"enum": ["read", "write", "external_send", "financial"]},
           "registered": {"type": "boolean", "description": "Found in the Agent Registry. Omitted = not registered."},
-          "session_injection_max": {"type": "number", "minimum": 0, "maximum": 1, "description": "Highest injection_score seen earlier in this agent session."}
+          "session_injection_max": {"type": "number", "minimum": 0, "maximum": 1, "description": "Highest injection_score seen earlier in this agent session."},
+          "scope_violations": {"type": "integer", "minimum": 0, "description": "Arguments of this tool call outside the registry's tool scopes (FR-AGT-4), counted by the MCP gateway."},
+          "rate_exceeded": {"type": "boolean", "description": "This call is over the tool's per-agent rate (FR-AGT-4)."},
+          "chain_depth": {"type": "integer", "minimum": 0, "description": "Agent-to-agent delegation hops behind this call: nesting of the token's act claim (RFC 8693)."}
         }
       }
     }

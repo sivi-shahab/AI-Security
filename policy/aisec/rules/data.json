@@ -11,6 +11,64 @@
       "reason": "AGENT_NOT_ACTIVE"
     },
     {
+      "id": "tpl.tool-not-allowed",
+      "description": "FR-AGT-4: tool di luar allow-list agent di registry = block (agent tak terdaftar tidak punya allow-list).",
+      "when": [
+        {"field": "direction", "op": "eq", "value": "tool_call"},
+        {"field": "agent.tool_allowed", "op": "eq", "value": false}
+      ],
+      "action": "block",
+      "reason": "TOOL_NOT_ALLOWED"
+    },
+    {
+      "id": "tpl.tool-scope-violation",
+      "description": "FR-AGT-4: argumen tool call di luar scope parameter registry (mis. amount > max, recipient di luar allow-list) = block.",
+      "when": [
+        {"field": "agent.scope_violations", "op": "gte", "value": 1}
+      ],
+      "action": "block",
+      "reason": "TOOL_SCOPE_VIOLATION"
+    },
+    {
+      "id": "tpl.tool-rate-limit",
+      "description": "FR-AGT-4: melebihi rate tool per agent = block.",
+      "when": [
+        {"field": "agent.rate_exceeded", "op": "eq", "value": true}
+      ],
+      "action": "block",
+      "reason": "TOOL_RATE_LIMITED"
+    },
+    {
+      "id": "tpl.agent-chain-depth",
+      "description": "FR-AGT-4: rantai agent-ke-agent lebih dari 3 hop (nesting act di token) = block.",
+      "when": [
+        {"field": "agent.chain_depth", "op": "gte", "value": 4}
+      ],
+      "action": "block",
+      "reason": "AGENT_CHAIN_TOO_DEEP"
+    },
+    {
+      "id": "tpl.indirect-injection",
+      "description": "FR-PSEC-2: tool result / resource read (untrusted) dengan injection_score >= 0.7 = block sebelum sampai ke agent.",
+      "when": [
+        {"field": "direction", "op": "eq", "value": "tool_result"},
+        {"field": "content.injection_score", "op": "gte", "value": 0.7}
+      ],
+      "action": "block",
+      "reason": "INDIRECT_INJECTION"
+    },
+    {
+      "id": "tpl.injection-then-high-tool",
+      "description": "FR-AGT-6, FR-RISK-2: sesi yang sudah melihat injection >= 0.5 lalu memanggil tool high = require_approval (tanpa HITL = deny).",
+      "when": [
+        {"field": "direction", "op": "eq", "value": "tool_call"},
+        {"field": "agent.tool_risk", "op": "eq", "value": "high"},
+        {"field": "agent.session_injection_max", "op": "gte", "value": 0.5}
+      ],
+      "action": "require_approval",
+      "reason": "INJECTION_THEN_HIGH_TOOL"
+    },
+    {
       "id": "tpl.blocked-app",
       "description": "FR-DISC-4: app berstatus blocked di katalog = block (semua sensitivity, onshore maupun offshore).",
       "when": [

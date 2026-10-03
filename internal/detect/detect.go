@@ -34,9 +34,18 @@ type Class struct {
 }
 
 type Result struct {
-	Sensitivity string  `json:"sensitivity"`
-	Classes     []Class `json:"classes"`
-	Matches     []Match `json:"matches"`
+	Sensitivity string    `json:"sensitivity"`
+	Classes     []Class   `json:"classes"`
+	Matches     []Match   `json:"matches"`
+	Injection   Injection `json:"injection"`
+}
+
+// Injection is the L1 prompt-injection signal (FR-PSEC-10): score in [0,1], attack types, and evidence spans
+// (offsets only). The decision stays with the PDP.
+type Injection struct {
+	Score    float64  `json:"score"`
+	Types    []string `json:"types"`
+	Evidence []Match  `json:"evidence"`
 }
 
 // Scan runs L1 over text.
@@ -70,16 +79,29 @@ func scan(src string, depth int, enc string) []Match {
 		add(scan(n.tags, depth+1, strings.Trim(enc+"/tags", "/")), func(Match) [2]int { return n.tagSpan }, "")
 	}
 	// ROT13 only changes letters, so only letter-keyed detectors (secrets) can newly fire.
-	add(secrets(n.s, true), func(m Match) [2]int { return n.span(m.Span[0], m.Span[1]) }, "rot13")
+	if n.tags != "" { // hidden ASCII is itself a smuggling signal, whatever it says
+		add([]Match{{Type: injectionPrefix + "smuggling", Confidence: 0.6, Span: [2]int{0, 0}}}, func(Match) [2]int { return n.tagSpan }, "tags")
+	}
+	add(rules(n.s, true), func(m Match) [2]int { return n.span(m.Span[0], m.Span[1]) }, "rot13")
 	return ms
 }
 
 func detectAll(s string) []Match {
-	ms := append(numbers(s), secrets(s, false)...)
+	rs := rules(s, false)
+	ms := append(numbers(s), rs...)
+	var secrets []Match
+	for _, m := range rs {
+		if strings.HasPrefix(m.Type, "SECRET.") {
+			secrets = append(secrets, m)
+		}
+	}
+	if secrets == nil {
+		return ms
+	}
 	// A number inside a secret (key material, JWT, connection string) is part of the secret, not PII.
 	out := ms[:0]
 	for _, m := range ms {
-		if insideSecret(m, ms) {
+		if insideSecret(m, secrets) {
 			continue
 		}
 		out = append(out, m)
@@ -272,7 +294,7 @@ func nearestBank(win string) (int, bool) {
 
 // --- secrets (FR-CLS-1 Credentials / Secrets) ---
 
-type secretRule struct {
+type rule struct {
 	typ     string
 	anchors []string // literals a match starts with; lower-case when fold
 	fold    bool     // case-insensitive
@@ -283,7 +305,7 @@ type secretRule struct {
 
 // Rules are anchored: strings.Index finds each anchor, then the ^-anchored regexp runs from there only.
 // Unanchored, these patterns ran Go's NFA over the whole text and blew the 10 ms budget tenfold.
-var secretRules = []secretRule{
+var secretRules = []rule{
 	{"SECRET.AWS_KEY", []string{"AKIA", "ASIA"}, false, regexp.MustCompile(`^(?:AKIA|ASIA)[A-Z0-9]{16}\b`), 0.99, nil},
 	{"SECRET.GITHUB_TOKEN", []string{"ghp_", "gho_", "ghu_", "ghs_", "ghr_", "github_pat_"}, false, regexp.MustCompile(`^(?:gh[pousr]_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{82})\b`), 0.99, nil},
 	{"SECRET.GITLAB_TOKEN", []string{"glpat-"}, false, regexp.MustCompile(`^glpat-[A-Za-z0-9_-]{20,}`), 0.99, nil},
@@ -311,12 +333,15 @@ type anchor struct {
 	rule int
 }
 
+// allRules: secret and injection rules share the anchored matcher.
+var allRules = append(append([]rule{}, secretRules...), injectionRules...)
+
 // anchors[rot][c]: the anchors whose first byte (lower-cased for fold rules) is c, for plain text and for
 // text to be read as ROT13. One pass over the text checks only those, instead of one strings.Index per anchor.
 var anchors [2][256][]anchor
 
 func init() {
-	for i, r := range secretRules {
+	for i, r := range allRules {
 		for _, a := range r.anchors {
 			for rot, lit := range []string{a, rot13(a)} {
 				anchors[rot][lit[0]] = append(anchors[rot][lit[0]], anchor{lit, i})
@@ -328,25 +353,31 @@ func init() {
 	}
 }
 
-// secrets finds secret rule matches in s; with rot, in ROT13(s) (same offsets: ROT13 maps byte to byte).
-func secrets(s string, rot bool) []Match {
+// rules finds secret and injection rule matches in s; with rot, in ROT13(s) (same offsets: ROT13 maps byte
+// to byte).
+func rules(s string, rot bool) []Match {
 	var out []Match
 	r := 0
 	if rot {
 		r = 1
 	}
 	for i := 0; i < len(s); i++ {
-		for _, a := range anchors[r][s[i]] {
-			rule := secretRules[a.rule]
-			if len(s)-i < len(a.lit) || (i > 0 && word(s[i-1])) {
+		cands := anchors[r][s[i]]
+		// Anchors that start with a word character only match at a word start.
+		if len(cands) == 0 || i > 0 && word(s[i]) && word(s[i-1]) {
+			continue
+		}
+		for _, a := range cands {
+			rule := allRules[a.rule]
+			if len(s)-i < len(a.lit) {
 				continue
 			}
-			if head := s[i : i+len(a.lit)]; head != a.lit && (!rule.fold || asciiLower(head) != a.lit) {
+			if head := s[i : i+len(a.lit)]; head != a.lit && (!rule.fold || !lowerEq(head, a.lit)) {
 				continue
 			}
 			text := s[i:min(len(s), i+maxSecret)]
 			if rot {
-				text = rot13(text)
+				text = rot13(text[:min(len(text), maxROT13)])
 			}
 			loc := rule.re.FindStringSubmatchIndex(text)
 			if loc == nil {
@@ -365,18 +396,24 @@ func secrets(s string, rot bool) []Match {
 	return out
 }
 
-func word(c byte) bool { return c == '_' || digit(c) || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' }
+// maxROT13 bounds the window decoded per anchor hit in ROT13 mode; ROT13'd secrets longer than this are missed.
+const maxROT13 = 1 << 10
 
-// asciiLower lower-cases ASCII only, so byte offsets stay valid for the original string.
-func asciiLower(s string) string {
-	b := []byte(s)
-	for i, c := range b {
+// lowerEq: ASCII-lowercased a equals lower (already lower-case), without allocating.
+func lowerEq(a, lower string) bool {
+	for i := 0; i < len(a); i++ {
+		c := a[i]
 		if c >= 'A' && c <= 'Z' {
-			b[i] = c + 32
+			c += 32
+		}
+		if c != lower[i] {
+			return false
 		}
 	}
-	return string(b)
+	return true
 }
+
+func word(c byte) bool { return c == '_' || digit(c) || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' }
 
 // jwtHeader: the first segment decodes to a JSON object with "alg".
 func jwtHeader(tok string) bool {
@@ -468,12 +505,19 @@ func aggregate(ms []Match) Result {
 	values := map[string]map[string]bool{}
 	conf := map[string]float64{}
 	level := 1
+	inj := Injection{Types: []string{}, Evidence: []Match{}}
+	weights := map[string]float64{}
 	for _, m := range ms {
 		k := [3]any{m.Type, m.Span[0], m.Span[1]}
 		if seen[k] {
 			continue
 		}
 		seen[k] = true
+		if t, ok := strings.CutPrefix(m.Type, injectionPrefix); ok {
+			inj.Evidence = append(inj.Evidence, m)
+			weights[t] = max(weights[t], m.Confidence)
+			continue
+		}
 		out = append(out, m)
 		if values[m.Type] == nil {
 			values[m.Type] = map[string]bool{}
@@ -493,7 +537,15 @@ func aggregate(ms []Match) Result {
 	if out == nil {
 		out = []Match{}
 	}
-	return Result{Sensitivity: levels[level], Classes: classes, Matches: out}
+	// Independent signals combine: 1 - Π(1 - w) over the strongest match of each attack type.
+	miss := 1.0
+	for t, w := range weights {
+		inj.Types = append(inj.Types, t)
+		miss *= 1 - w
+	}
+	sort.Strings(inj.Types)
+	inj.Score = math.Round((1-miss)*1000) / 1000
+	return Result{Sensitivity: levels[level], Classes: classes, Matches: out, Injection: inj}
 }
 
 // Redact replaces the spans of matches whose type is in types (all matches if types is empty) with

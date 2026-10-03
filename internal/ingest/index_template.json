@@ -43,6 +43,9 @@
         "agent_registered": {"type": "boolean"},
         "session_injection_max": {"type": "float"},
         "hitl_available": {"type": "boolean"},
+        "scope_violations": {"type": "integer"},
+        "rate_exceeded": {"type": "boolean"},
+        "chain_depth": {"type": "integer"},
         "snippet": {"type": "text"}
       }
     }

@@ -143,18 +143,24 @@ var ErrInvalidRules = errors.New("rule set invalid")
 type Evaluator struct{ pq rego.PreparedEvalQuery }
 
 func NewEvaluator(ctx context.Context, fsys fs.FS, overrides Overrides) (*Evaluator, error) {
-	src, err := load(fsys, overrides)
-	if err != nil {
-		return nil, err
-	}
-	if err := Validate(ctx, src); err != nil {
-		return nil, err
-	}
-	pq, err := rego.New(src.regoOpts("data.aisec.decision.result")...).PrepareForEval(ctx)
+	pq, err := Query(ctx, fsys, overrides, "data.aisec.decision.result")
 	if err != nil {
 		return nil, err
 	}
 	return &Evaluator{pq}, nil
+}
+
+// Query prepares query over the validated policy in fsys with overrides, as the sidecars would evaluate it
+// (PEP tests use it to stand in for OPA).
+func Query(ctx context.Context, fsys fs.FS, overrides Overrides, query string) (rego.PreparedEvalQuery, error) {
+	src, err := load(fsys, overrides)
+	if err != nil {
+		return rego.PreparedEvalQuery{}, err
+	}
+	if err := Validate(ctx, src); err != nil {
+		return rego.PreparedEvalQuery{}, err
+	}
+	return rego.New(src.regoOpts(query)...).PrepareForEval(ctx)
 }
 
 // Decision is the part of the PDP result simulation compares.

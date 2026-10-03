@@ -80,7 +80,7 @@ func setup(t *testing.T) (*Store, *lifecycle.Store, *pgxpool.Pool) {
 func agent(id, owner, unit, ref string) Agent {
 	a := Agent{ID: id, Name: id, BusinessUnit: unit, Purpose: "reconcile invoices", Environment: "prod", RiskTier: "high",
 		Identity: Identity{Type: "spiffe", Ref: ref}, Tools: []Tool{{Name: "erp.read", Risk: "low"}, {Name: "payments.transfer", Risk: "high",
-			Scopes: map[string]any{"amount_max": 25000000}}}, DataScopes: []string{"finance:invoices"}}
+			Scopes: map[string]any{"amount": map[string]any{"max": 25000000.0}}}}, DataScopes: []string{"finance:invoices"}}
 	if owner != "" {
 		a.Owner = &owner
 	}
