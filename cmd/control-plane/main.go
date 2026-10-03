@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 
+	"aisec/internal/audit"
 	"aisec/internal/policysvc"
 	"aisec/internal/privacy"
 	"aisec/internal/server"
@@ -12,6 +13,10 @@ import (
 )
 
 func main() {
+	// `control-plane audit anchor|verify ...`: run by the audit-anchor CronJob or via kubectl exec.
+	if len(os.Args) > 1 && os.Args[1] == "audit" {
+		os.Exit(audit.Main(context.Background(), os.Args[2:], os.Stdout))
+	}
 	log := privacy.NewLogger("control-plane")
 	// No key, no bundle: sidecars must never be offered an unsigned policy.
 	key, err := os.ReadFile(os.Getenv("BUNDLE_SIGNING_KEY_FILE"))

@@ -33,7 +33,7 @@ Satu PDP untuk semua PEP (prinsip P2).
 ## Hasil verifikasi lokal (2026-10-03)
 - `opa test` 18/18, `opa check --strict`, `go test -race`, golangci-lint, trivy config: lulus.
 - Docker e2e (control-plane + OPA 1.21.1): bundle diaktifkan, long-poll menahan request (1 load, bukan ribuan), decision log menghapus `/input/prompt`.
-- Bundle ditandatangani key lain → `invalid ECDSA signature`; data.json diubah dengan signature lama → `digest mismatch`. Keduanya ditolak, OPA tetap memakai bundle lama, `bundle_failed_load_counter` naik → alert `PolicyBundleSignatureInvalid` (`deploy/cluster/policy-alerts.yaml`).
+- Bundle ditandatangani key lain → `invalid ECDSA signature`; data.json diubah dengan signature lama → `digest mismatch`. Keduanya ditolak, OPA tetap memakai bundle lama, `bundle_failed_load_counter` naik → alert `PolicyBundleSignatureInvalid` (`deploy/cluster/alerts.yaml`).
 
 ## Sisa / follow-up
 - Provision Secret `policy-bundle-signing` + ConfigMap `policy-bundle-pubkey` (idealnya key di Vault/HSM); PrometheusRule butuh prometheus-operator.

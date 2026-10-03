@@ -1,4 +1,4 @@
-# Alerts for the OPA sidecars (prometheus-operator). OPA keeps serving the last verified bundle, so a rejected
+# Alerts for aisec (prometheus-operator). OPA keeps serving the last verified bundle, so a rejected
 # bundle is silent for traffic: these make it loud. Scraped from each sidecar's :8282/metrics.
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
@@ -23,3 +23,19 @@ spec:
           labels: {severity: warning}
           annotations:
             summary: OPA in {{ $labels.pod }} keeps failing to load the policy bundle; still on the last verified one
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: aisec-audit-anchor
+  namespace: aisec
+spec:
+  groups:
+    - name: audit-anchor
+      rules:
+        # A day without a WORM anchor leaves its tail of the audit chain unprotected (FR-COMP-4). Needs kube-state-metrics.
+        - alert: AuditAnchorMissing
+          expr: time() - kube_cronjob_status_last_successful_time{namespace="aisec", cronjob="audit-anchor"} > 26 * 3600
+          labels: {severity: critical, category: security}
+          annotations:
+            summary: No successful daily audit anchor in the last 26 hours

@@ -1,0 +1,43 @@
+# Daily audit anchor (FR-COMP-4): signs yesterday's chain head and stores it in the WORM bucket.
+# Secrets are provisioned out of band: audit-anchor (DATABASE_URL, AUDIT_S3_*), audit-anchor-key (anchor.key, EC P-256;
+# HSM-backed in production). The bucket MUST be created with object lock enabled.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: audit-anchor
+spec:
+  schedule: "15 0 * * *"
+  timeZone: Asia/Jakarta
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 6
+      template:
+        spec:
+          restartPolicy: OnFailure
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: anchor
+              image: registry.local/aisec/control-plane:dev
+              args: [audit, anchor, --day, yesterday]
+              envFrom: [{secretRef: {name: audit-anchor}}]
+              env:
+                - {name: AUDIT_ANCHOR_KEY_FILE, value: /keys/anchor.key}
+                - {name: AUDIT_ANCHOR_KEY_ID, value: audit-anchor-1}
+                - {name: AUDIT_RETENTION_YEARS, value: "5"}  # spec §10.2 floor; raise when the bank's policy (U9) says so
+              volumeMounts:
+                - {name: anchor-key, mountPath: /keys, readOnly: true}
+              resources:
+                requests: {cpu: 50m, memory: 64Mi}
+                limits: {cpu: 500m, memory: 256Mi}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: [ALL]}
+          volumes:
+            - {name: anchor-key, secret: {secretName: audit-anchor-key}}

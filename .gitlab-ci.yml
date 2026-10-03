@@ -49,6 +49,18 @@ lint:python:
 test:go:
   stage: test
   image: $GO_IMAGE
+  # Audit log integration test (internal/audit): real Postgres + S3 object lock. It fails, not skips, under CI.
+  services:
+    - {name: "${MIRROR}postgres:17", alias: postgres}
+    - {name: "${MIRROR}minio/minio:RELEASE.2024-06-13T22-53-53Z", alias: minio, command: [server, /data]}
+  variables:
+    POSTGRES_PASSWORD: test
+    MINIO_ROOT_USER: minio
+    MINIO_ROOT_PASSWORD: minio-test-only
+    AUDIT_TEST_DATABASE_URL: postgres://postgres:test@postgres:5432/postgres
+    AUDIT_TEST_S3_ENDPOINT: minio:9000
+    AUDIT_TEST_S3_ACCESS_KEY: minio
+    AUDIT_TEST_S3_SECRET_KEY: minio-test-only
   script:
     - go vet ./...
     - go test -race ./...  # includes the shared privacy test (internal/privacy)
