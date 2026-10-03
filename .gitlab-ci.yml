@@ -25,12 +25,14 @@ workflow:
 .services: &services
   parallel:
     matrix:
-      - SERVICE: [control-plane, ai-gateway, detection-svc, event-ingest, siem-export, mcp-gateway]
+      - SERVICE: [control-plane, ai-gateway, detection-svc, event-ingest, siem-export, mcp-gateway, connector-worker]
         DOCKERFILE: build/go.Dockerfile
       - SERVICE: model-inference
         DOCKERFILE: services/model-inference/Dockerfile
       - SERVICE: opa  # upstream OPA, re-signed so Kyverno admits the PDP sidecar
         DOCKERFILE: build/opa.Dockerfile
+      - SERVICE: tika  # upstream Tika server, re-signed (file extraction, ticket 31)
+        DOCKERFILE: build/tika.Dockerfile
 
 lint:go:
   stage: lint

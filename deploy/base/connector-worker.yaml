@@ -1,0 +1,100 @@
+# Data-at-rest discovery (spec §4.3, ticket 31): the M365 connector worker and the Tika extraction service.
+# Both parse untrusted files, so both run under gVisor (RuntimeClass "gvisor", provided by the cluster) as
+# non-root with read-only roots. Tika gets no egress and only the worker may reach it.
+# Secret connector-worker (out of band): DATABASE_URL, TENANT_PEPPER, M365_TENANT_ID, M365_CLIENT_ID,
+# M365_CLIENT_SECRET (Entra app, read-only: Sites.Read.All, Files.Read.All, User.Read.All), M365_DOMAINS,
+# M365_LABELS (JSON Purview label id → sensitivity), SCAN_INTERVAL (optional).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: connector-worker
+  labels: {app: connector-worker}
+spec:
+  replicas: 2  # containers are locked per worker (advisory lock), so replicas split the work
+  selector:
+    matchLabels: {app: connector-worker}
+  template:
+    metadata:
+      labels: {app: connector-worker}
+    spec:
+      runtimeClassName: gvisor
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: connector-worker
+          image: registry.local/aisec/connector-worker:dev
+          imagePullPolicy: Always
+          envFrom: [{secretRef: {name: connector-worker}}]
+          env:
+            - {name: TIKA_URL, value: "http://tika:9998"}
+          ports: [{containerPort: 8080, name: http}]
+          readinessProbe: {httpGet: {path: /healthz, port: http}}
+          livenessProbe: {httpGet: {path: /healthz, port: http}}
+          resources:
+            requests: {cpu: 200m, memory: 256Mi}
+            limits: {cpu: "2", memory: 1Gi}  # one 50 MB file plus its extraction in memory
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tika
+  labels: {app: tika}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: tika}
+  template:
+    metadata:
+      labels: {app: tika}
+    spec:
+      runtimeClassName: gvisor
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 35002
+        runAsGroup: 35002
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: tika
+          image: registry.local/aisec/tika:dev  # upstream Tika re-signed by CI (build/tika.Dockerfile)
+          imagePullPolicy: Always
+          ports: [{containerPort: 9998, name: http}]
+          readinessProbe: {httpGet: {path: /tika, port: http}}
+          resources:
+            requests: {cpu: 200m, memory: 512Mi}
+            limits: {cpu: "2", memory: 2Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes:
+        - {name: tmp, emptyDir: {sizeLimit: 1Gi}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tika
+spec:
+  selector: {app: tika}
+  ports: [{port: 9998, targetPort: http, name: http}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tika-isolated
+spec:
+  podSelector: {matchLabels: {app: tika}}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from: [{podSelector: {matchLabels: {app: connector-worker}}}]
+      ports: [{port: 9998}]
+  egress: []  # a parser exploit has nowhere to call

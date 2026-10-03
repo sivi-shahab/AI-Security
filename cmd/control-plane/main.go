@@ -19,6 +19,7 @@ import (
 	"aisec/internal/audit"
 	"aisec/internal/authz"
 	"aisec/internal/catalog"
+	"aisec/internal/datascan"
 	"aisec/internal/events"
 	"aisec/internal/identity"
 	"aisec/internal/incident"
@@ -100,6 +101,9 @@ func main() {
 	apps, err := catalog.Open(ctx, db, os.Getenv("TENANT_ID"), policies)
 	if err != nil {
 		fail("app catalog", err)
+	}
+	if err := datascan.Open(ctx, db); err != nil {
+		fail("data scan store", err)
 	}
 	registry, err := agents.Open(ctx, db, os.Getenv("TENANT_ID"), policies)
 	if err != nil {
@@ -218,7 +222,7 @@ func main() {
 	routes(rt, deps{bundles: bundles, scim: ids.SCIMHandler(scimHash, os.Getenv("PUBLIC_URL")), metrics: metrics, mcpGateway: registry.GatewayHandler(mcpHash, time.Now), incidents: incidents, identity: ids,
 		policies: policies, simulator: simulator, apps: apps, feedKey: feedKey,
 		posture: posture.Sources{Search: search.Search, Apps: apps, Incidents: incidents, Policies: policies, Agents: registry},
-		agents:  registry})
+		agents:  registry, data: db})
 	server.Run("control-plane", rt.Mux)
 	cancel()
 	kc.Close()

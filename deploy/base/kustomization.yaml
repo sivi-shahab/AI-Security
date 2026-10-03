@@ -8,6 +8,7 @@ resources:
   - event-ingest.yaml
   - siem-export.yaml
   - mcp-gateway.yaml
+  - connector-worker.yaml
 configMapGenerator:
   - name: opa-config
     files: [opa/opa.yaml]

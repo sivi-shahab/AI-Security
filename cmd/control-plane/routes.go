@@ -4,9 +4,12 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"aisec/internal/agents"
 	"aisec/internal/authz"
 	"aisec/internal/catalog"
+	"aisec/internal/datascan"
 	"aisec/internal/identity"
 	"aisec/internal/incident"
 	"aisec/internal/lifecycle"
@@ -26,6 +29,7 @@ type deps struct {
 	feedKey                []byte
 	posture                posture.Sources
 	agents                 *agents.Store
+	data                   *pgxpool.Pool // data-at-rest findings (ticket 31)
 }
 
 // routes is the complete admin API. Everything not listed as Public needs a permission (deny by default);
@@ -46,4 +50,5 @@ func routes(rt *authz.Router, d deps) {
 	catalog.Routes(rt, d.apps, d.feedKey, time.Now)
 	posture.Routes(rt, d.posture, time.Now)
 	agents.Routes(rt, d.agents, time.Now)
+	datascan.Routes(rt, d.data)
 }
