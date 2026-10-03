@@ -1,0 +1,24 @@
+{
+  "version": "risk-1",
+  "weights": {"sens": 0.30, "dest": 0.20, "attack": 0.15, "agency": 0.15, "volume": 0.10, "ident": 0.10},
+  "levels": {
+    "sensitivity": {"public": 0, "internal": 0.3, "confidential": 0.6, "restricted": 1},
+    "sanction": {"sanctioned": 0, "tolerated": 0.4, "unsanctioned": 0.8, "under_review": 0.8, "blocked": 1},
+    "account_context": {"corporate": 0, "unknown": 0.3, "personal": 1},
+    "device": {"managed": 0, "unknown": 0.3, "unmanaged": 0.6},
+    "action": {"read": 0.1, "write": 0.5, "external_send": 0.8, "financial": 1},
+    "tool_risk": {"low": 0.1, "medium": 0.5, "high": 1}
+  },
+  "volume_steps": [
+    {"ratio": 2, "f": 0.25},
+    {"ratio": 4, "f": 0.5},
+    {"ratio": 8, "f": 0.75},
+    {"ratio": 16, "f": 1}
+  ],
+  "overrides": {
+    "secret-to-unsanctioned": {"score": 100, "description": "FR-RISK-2: credential/secret valid ke tujuan non-sanctioned (set)."},
+    "injection-then-high-tool": {"score": 100, "injection_min": 0.8, "description": "FR-RISK-2: injection >= 0,8 di sesi (sebelumnya atau di tool call itu) lalu tool call high (set)."},
+    "pan-or-bulk-nik-to-personal-or-unsanctioned": {"score": 90, "nik_min": 10, "description": "FR-RISK-2: PAN valid atau >= nik_min NIK valid ke personal account / app non-sanctioned (floor)."},
+    "unregistered-agent-high-tool": {"score": 90, "description": "FR-RISK-2: agent tidak terdaftar memanggil tool high (floor). registered tidak dikirim = tidak terdaftar."}
+  }
+}

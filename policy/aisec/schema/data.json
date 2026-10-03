@@ -53,6 +53,9 @@
             }
           },
           "injection_score": {"type": "number", "minimum": 0, "maximum": 1},
+          "jailbreak_score": {"type": "number", "minimum": 0, "maximum": 1},
+          "exfil_score": {"type": "number", "minimum": 0, "maximum": 1},
+          "volume_ratio": {"type": "number", "minimum": 0, "description": "Entities/bytes in this event divided by the principal's baseline (FR-RISK-1 f_volume)."},
           "tokens": {"type": "integer", "minimum": 0}
         }
       },
@@ -64,10 +67,12 @@
           "agent_id": {"type": "string", "minLength": 1},
           "tool": {"type": "string"},
           "tool_risk": {"enum": ["low", "medium", "high"]},
-          "hitl_available": {"type": "boolean"}
+          "hitl_available": {"type": "boolean"},
+          "action": {"enum": ["read", "write", "external_send", "financial"]},
+          "registered": {"type": "boolean", "description": "Found in the Agent Registry. Omitted = not registered."},
+          "session_injection_max": {"type": "number", "minimum": 0, "maximum": 1, "description": "Highest injection_score seen earlier in this agent session."}
         }
-      },
-      "risk_score": {"type": "number", "minimum": 0, "maximum": 100}
+      }
     }
   },
   "output": {
@@ -75,7 +80,7 @@
     "$id": "aisec/pdp/output/v1",
     "title": "PDP decision v1 (spec FR-POL-3)",
     "type": "object",
-    "required": ["action", "obligations", "reason_codes", "matched_rules", "monitor_rules", "policy_id", "policy_version"],
+    "required": ["action", "obligations", "reason_codes", "matched_rules", "monitor_rules", "policy_id", "policy_version", "risk_score", "risk_overrides", "risk_version"],
     "additionalProperties": false,
     "properties": {
       "action": {"enum": ["block", "quarantine", "require_approval", "tokenize", "redact", "warn", "allow"]},
@@ -95,7 +100,10 @@
       "matched_rules": {"type": "array", "items": {"type": "string"}, "description": "Enforcing rules that matched."},
       "monitor_rules": {"type": "array", "items": {"type": "string"}, "description": "Monitor-only rules that matched; they never change action."},
       "policy_id": {"type": "string"},
-      "policy_version": {"type": "string"}
+      "policy_version": {"type": "string"},
+      "risk_score": {"type": "integer", "minimum": 0, "maximum": 100, "description": "FR-RISK-1/2, computed by the PDP; never supplied by the PEP."},
+      "risk_overrides": {"type": "array", "items": {"type": "string"}, "description": "FR-RISK-2 overrides that applied."},
+      "risk_version": {"type": "string", "description": "data.aisec.risk.config.version: weights and overrides used for this score."}
     }
   }
 }

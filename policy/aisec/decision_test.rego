@@ -97,7 +97,11 @@ test_ops if {
 	cond({"field": "content.injection_score", "op": "gte", "value": 0.5})
 	not cond({"field": "content.injection_score", "op": "gte", "value": 0.51})
 	cond({"field": "content.injection_score", "op": "lte", "value": 0.5})
-	not cond({"field": "risk_score", "op": "gte", "value": 0})
+	not cond({"field": "content.tokens", "op": "gte", "value": 0}) # missing number never compares
+	cond({"field": "risk_score", "op": "gte", "value": 10}) # computed by aisec.risk (~17 here)
+	not cond({"field": "risk_score", "op": "gte", "value": 50})
+	cond({"field": "content.classes", "op": "class_count_gte", "value": {"type": "PII_ID.*", "min": 2}})
+	not cond({"field": "content.classes", "op": "class_count_gte", "value": {"type": "PII_ID.NIK", "min": 3}})
 	cond({"field": "content.classes", "op": "class_any", "value": ["PII_ID.*"]})
 	cond({"field": "content.classes", "op": "class_any", "value": ["PII_ID.NIK"]})
 	not cond({"field": "content.classes", "op": "class_any", "value": ["PII.*"]})

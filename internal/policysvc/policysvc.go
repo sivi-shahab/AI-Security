@@ -86,15 +86,16 @@ func Build(ctx context.Context, fsys fs.FS, signingKeyPEM string) (tarball []byt
 	return buf.Bytes(), revision, nil
 }
 
-// checkRules fails on any data.aisec.decision.rule_errors: a typo must never become a rule that silently never matches.
+// checkRules fails on any decision rule_errors or risk config_errors: a typo must never become a rule that silently
+// never matches, nor weights that push a score out of 0-100.
 func checkRules(ctx context.Context, data map[string]any, opts []func(*rego.Rego)) error {
-	opts = append(opts, rego.Query("data.aisec.decision.rule_errors"), rego.Store(inmem.NewFromObject(data)))
+	opts = append(opts, rego.Query("data.aisec.decision.rule_errors | data.aisec.risk.config_errors"), rego.Store(inmem.NewFromObject(data)))
 	rs, err := rego.New(opts...).Eval(ctx)
 	if err != nil {
 		return fmt.Errorf("evaluate rule_errors: %w", err)
 	}
 	if len(rs) != 1 || len(rs[0].Expressions) != 1 {
-		return fmt.Errorf("rule_errors undefined: is aisec/decision.rego in the bundle?")
+		return fmt.Errorf("rule_errors undefined: are aisec/decision.rego and aisec/risk/risk.rego in the bundle?")
 	}
 	if errs, _ := rs[0].Expressions[0].Value.([]any); len(errs) > 0 {
 		return fmt.Errorf("rule set invalid: %v", errs)

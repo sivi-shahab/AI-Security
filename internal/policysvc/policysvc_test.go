@@ -5,11 +5,14 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
-	"crypto/rand"
+	crand "crypto/rand"
 	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
 	"io"
 	"io/fs"
+	"math"
+	"math/rand/v2"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -19,6 +22,7 @@ import (
 	"time"
 
 	"github.com/open-policy-agent/opa/v1/bundle"
+	"github.com/open-policy-agent/opa/v1/rego"
 	"github.com/open-policy-agent/opa/v1/tester"
 
 	"aisec/policy"
@@ -52,7 +56,7 @@ func TestRegoPolicies(t *testing.T) {
 
 func keyPair(t *testing.T) (priv, pub string) {
 	t.Helper()
-	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	k, err := ecdsa.GenerateKey(elliptic.P256(), crand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,6 +115,13 @@ func TestBuildRefusesInvalidRules(t *testing.T) {
 	if _, _, err := Build(context.Background(), fsys, priv); err == nil || !strings.Contains(err.Error(), "unknown op regex") {
 		t.Fatalf("err = %v, want rule_errors refusal", err)
 	}
+
+	fsys["aisec/rules/data.json"] = &fstest.MapFile{Data: []byte(`{"version": "ok", "items": []}`)}
+	cfg, _ := fs.ReadFile(policy.Files, "aisec/risk/config/data.json")
+	fsys["aisec/risk/config/data.json"] = &fstest.MapFile{Data: bytes.Replace(cfg, []byte(`"sens": 0.30`), []byte(`"sens": 0.90`), 1)}
+	if _, _, err := Build(context.Background(), fsys, priv); err == nil || !strings.Contains(err.Error(), "weights sum to") {
+		t.Fatalf("err = %v, want risk config refusal", err)
+	}
 }
 
 func get(t *testing.T, url string, hdr map[string]string) (*http.Response, string) {
@@ -159,5 +170,95 @@ func TestServerETagAndLongPoll(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("long-poll not woken by Publish")
+	}
+}
+
+func pick[T any](r *rand.Rand, xs ...T) T { return xs[r.IntN(len(xs))] }
+
+// unit returns a value in [0,1], biased toward the edges where rounding and caps bite.
+func unit(r *rand.Rand) float64 { return pick(r, 0, 1, 0.5, 0.79999, 0.8, r.Float64()) }
+
+func randomInput(r *rand.Rand) map[string]any {
+	classes := []any{}
+	for range r.IntN(4) {
+		classes = append(classes, map[string]any{
+			"type":       pick(r, "PII_ID.NIK", "PCI.PAN", "SECRET.AWS_KEY", "FIN.ACCOUNT", "PHI.DIAGNOSIS"),
+			"count":      pick(r, 1, 9, 10, 1+r.IntN(1000)),
+			"confidence": unit(r),
+		})
+	}
+	in := map[string]any{
+		"channel":   pick(r, "ai_gateway", "web_proxy", "browser_ext", "endpoint", "mcp_gateway", "connector"),
+		"direction": pick(r, "request", "response", "tool_call", "tool_result", "at_rest"),
+		"principal": map[string]any{
+			"type": pick(r, "user", "agent", "service"), "id": "p", "risk": unit(r),
+			"device": pick(r, "managed", "unmanaged", "unknown"), "account_context": pick(r, "corporate", "personal", "unknown"),
+		},
+		"destination": map[string]any{
+			"app_id": "a", "sanction": pick(r, "sanctioned", "tolerated", "unsanctioned", "blocked", "under_review"),
+			"region": pick(r, "ID", "US", "unknown"),
+		},
+		"content": map[string]any{
+			"sensitivity": pick(r, "public", "internal", "confidential", "restricted"), "classes": classes,
+			"injection_score": unit(r), "jailbreak_score": unit(r), "exfil_score": unit(r),
+			"volume_ratio": pick(r, 0, 1.99, 2, 16, r.Float64()*1e9),
+		},
+	}
+	if r.IntN(4) == 0 { // quiet event: every factor near 0, where a negative level or weight would show
+		in["principal"] = map[string]any{"type": "user", "id": "p", "device": "managed", "account_context": "corporate"}
+		in["content"] = map[string]any{"sensitivity": pick(r, "public", "internal"), "classes": []any{}}
+		return in
+	}
+	if r.IntN(2) == 0 {
+		agent := map[string]any{"agent_id": "g", "tool_risk": pick(r, "low", "medium", "high"), "session_injection_max": unit(r)}
+		if r.IntN(2) == 0 {
+			agent["action"] = pick(r, "read", "write", "external_send", "financial")
+		}
+		if r.IntN(2) == 0 {
+			agent["registered"] = r.IntN(2) == 0
+		}
+		in["agent"] = agent
+	}
+	return in
+}
+
+// FR-RISK-1 property: for every valid input the score is an integer in [0, 100] and carries the weights version.
+func TestRiskScoreAlwaysInRange(t *testing.T) {
+	ctx := context.Background()
+	modules, store, err := tester.Load([]string{"../../policy"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := []func(*rego.Rego){rego.Query("data.aisec.decision.result"), rego.Store(store)}
+	for _, m := range modules {
+		opts = append(opts, rego.ParsedModule(m))
+	}
+	pq, err := rego.New(opts...).PrepareForEval(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := rand.New(rand.NewPCG(17, 17))
+	seen := map[float64]bool{}
+	for i := range 500 { // ~15s under -race
+		in := randomInput(r)
+		rs, err := pq.Eval(ctx, rego.EvalInput(in))
+		if err != nil || len(rs) != 1 {
+			t.Fatalf("eval %v: %v", in, err)
+		}
+		out := rs[0].Expressions[0].Value.(map[string]any)
+		if slices.Contains(out["reason_codes"].([]any), any("INPUT_SCHEMA_INVALID")) {
+			t.Fatalf("generator produced invalid input %d: %v", i, in)
+		}
+		score, err := out["risk_score"].(json.Number).Float64()
+		if err != nil || score < 0 || score > 100 || score != math.Trunc(score) {
+			t.Fatalf("risk_score %v for %v", out["risk_score"], in)
+		}
+		if out["risk_version"] == "" {
+			t.Fatalf("no risk_version for %v", in)
+		}
+		seen[score] = true
+	}
+	if !seen[0] || !seen[100] || len(seen) < 40 {
+		t.Errorf("generator too narrow: %d distinct scores, 0 seen %v, 100 seen %v", len(seen), seen[0], seen[100])
 	}
 }

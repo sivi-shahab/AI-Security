@@ -8,6 +8,9 @@ package aisec.decision
 
 import rego.v1
 
+import data.aisec.cond
+import data.aisec.risk
+
 # DEC-2 precedence, strictest last.
 rank := {
 	"allow": 0,
@@ -18,8 +21,6 @@ rank := {
 	"quarantine": 5,
 	"block": 6,
 }
-
-ops := {"eq", "neq", "in", "not_in", "gte", "lte", "class_any"}
 
 valid_input if json.match_schema(input, data.aisec.schema.input)[0]
 
@@ -32,6 +33,10 @@ result := {
 	"monitor_rules": [],
 	"policy_id": "aisec.decision",
 	"policy_version": data.aisec.rules.version,
+	# A malformed input is a PEP bug, not user risk: alert on INPUT_SCHEMA_INVALID, do not page the SOC.
+	"risk_score": 0,
+	"risk_overrides": [],
+	"risk_version": data.aisec.risk.config.version,
 } if not valid_input
 
 result := {
@@ -42,12 +47,15 @@ result := {
 	"monitor_rules": sort({r.id | some r in monitored}),
 	"policy_id": "aisec.decision",
 	"policy_version": data.aisec.rules.version,
+	"risk_score": risk.score,
+	"risk_overrides": risk.applied,
+	"risk_version": data.aisec.risk.config.version,
 } if valid_input
 
 matched contains rule if {
 	some rule in data.aisec.rules.items
 	every c in rule.when {
-		holds(c.op, c.field, c.value)
+		cond.holds(c.op, value(c.field), c.value)
 	}
 }
 
@@ -75,35 +83,10 @@ obligations contains o if {
 
 sort_objects(s) := [o | some k in sort([json.marshal(x) | some x in s]); o := json.unmarshal(k)]
 
-value(field) := object.get(input, split(field, "."), null)
+# risk_score is computed by aisec.risk, never supplied by the PEP.
+value("risk_score") := risk.score
 
-# The op is the first argument so OPA's rule index picks one clause instead of trying all seven.
-holds("eq", field, v) if value(field) == v
-
-# Missing fields count as "not equal": e.g. an unknown region is offshore.
-holds("neq", field, v) if value(field) != v
-
-holds("in", field, v) if value(field) in v
-
-holds("not_in", field, v) if not value(field) in v
-
-holds("gte", field, v) if {
-	x := value(field)
-	is_number(x)
-	x >= v
-}
-
-holds("lte", field, v) if {
-	x := value(field)
-	is_number(x)
-	x <= v
-}
-
-holds("class_any", _, v) if {
-	some cls in object.get(input, ["content", "classes"], [])
-	some pattern in v
-	glob.match(pattern, ["."], cls.type)
-}
+value(field) := object.get(input, split(field, "."), null) if field != "risk_score"
 
 # Rule-set validation. The bundle builder refuses to publish while this is non-empty, so a typo in a
 # rule can never turn into a rule that silently never matches.
@@ -120,7 +103,7 @@ rule_errors contains sprintf("%v: unknown action %v", [r.id, r.action]) if {
 rule_errors contains sprintf("%v: unknown op %v", [r.id, c.op]) if {
 	some r in data.aisec.rules.items
 	some c in r.when
-	not c.op in ops
+	not c.op in cond.ops
 }
 
 rule_errors contains sprintf("%v: empty when", [r.id]) if {
