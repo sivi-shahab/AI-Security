@@ -1,0 +1,363 @@
+{
+ "version": 1,
+ "published_at": "2026-10-03T00:00:00Z",
+ "note": "Seed catalog: public domains and API signatures only. Attributes left null/unknown are for the bank to fill (override) or a later signed feed; ticket 03 extends this to ~200 apps.",
+ "apps": [
+  {
+   "id": "chatgpt",
+   "vendor": "OpenAI",
+   "name": "ChatGPT / OpenAI API",
+   "category": "chat",
+   "domains": [
+    "chatgpt.com",
+    "chat.openai.com",
+    "api.openai.com"
+   ],
+   "api_endpoints": [
+    "POST /v1/chat/completions",
+    "POST /v1/responses"
+   ],
+   "headers": [
+    "openai-organization"
+   ],
+   "user_agents": [
+    "OpenAI/Python",
+    "OpenAI/JS"
+   ],
+   "payload_keys": [
+    "messages",
+    "model"
+   ],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "claude",
+   "vendor": "Anthropic",
+   "name": "Claude / Anthropic API",
+   "category": "chat",
+   "domains": [
+    "claude.ai",
+    "api.anthropic.com"
+   ],
+   "api_endpoints": [
+    "POST /v1/messages"
+   ],
+   "headers": [
+    "anthropic-version"
+   ],
+   "user_agents": [
+    "Anthropic/Python",
+    "Anthropic/JS"
+   ],
+   "payload_keys": [
+    "messages",
+    "model",
+    "max_tokens"
+   ],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "gemini",
+   "vendor": "Google",
+   "name": "Gemini / Gemini API",
+   "category": "chat",
+   "domains": [
+    "gemini.google.com",
+    "generativelanguage.googleapis.com"
+   ],
+   "api_endpoints": [
+    "POST :generateContent",
+    "POST :streamGenerateContent"
+   ],
+   "headers": [],
+   "user_agents": [
+    "google-genai-sdk"
+   ],
+   "payload_keys": [
+    "contents"
+   ],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "microsoft-copilot",
+   "vendor": "Microsoft",
+   "name": "Microsoft Copilot",
+   "category": "chat",
+   "domains": [
+    "copilot.microsoft.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "github-copilot",
+   "vendor": "GitHub",
+   "name": "GitHub Copilot",
+   "category": "code",
+   "domains": [
+    "api.githubcopilot.com",
+    "copilot-proxy.githubusercontent.com"
+   ],
+   "api_endpoints": [],
+   "headers": [
+    "copilot-integration-id"
+   ],
+   "user_agents": [
+    "GithubCopilot"
+   ],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "deepseek",
+   "vendor": "DeepSeek",
+   "name": "DeepSeek",
+   "category": "chat",
+   "domains": [
+    "chat.deepseek.com",
+    "api.deepseek.com"
+   ],
+   "api_endpoints": [
+    "POST /v1/chat/completions",
+    "POST /v1/responses"
+   ],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [
+    "messages",
+    "model"
+   ],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "CN",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "qwen",
+   "vendor": "Alibaba Cloud",
+   "name": "Qwen",
+   "category": "chat",
+   "domains": [
+    "chat.qwen.ai",
+    "dashscope.aliyuncs.com"
+   ],
+   "api_endpoints": [
+    "POST /v1/chat/completions",
+    "POST /v1/responses"
+   ],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [
+    "messages",
+    "model"
+   ],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "CN",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "mistral",
+   "vendor": "Mistral AI",
+   "name": "Le Chat / Mistral API",
+   "category": "chat",
+   "domains": [
+    "chat.mistral.ai",
+    "api.mistral.ai"
+   ],
+   "api_endpoints": [
+    "POST /v1/chat/completions",
+    "POST /v1/responses"
+   ],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [
+    "messages",
+    "model"
+   ],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "FR",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "perplexity",
+   "vendor": "Perplexity",
+   "name": "Perplexity",
+   "category": "chat",
+   "domains": [
+    "perplexity.ai",
+    "www.perplexity.ai",
+    "api.perplexity.ai"
+   ],
+   "api_endpoints": [
+    "POST /v1/chat/completions",
+    "POST /v1/responses"
+   ],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "poe",
+   "vendor": "Quora",
+   "name": "Poe",
+   "category": "chat",
+   "domains": [
+    "poe.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "character-ai",
+   "vendor": "Character.AI",
+   "name": "Character.AI",
+   "category": "chat",
+   "domains": [
+    "character.ai",
+    "beta.character.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "midjourney",
+   "vendor": "Midjourney",
+   "name": "Midjourney",
+   "category": "image",
+   "domains": [
+    "midjourney.com",
+    "www.midjourney.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "cursor",
+   "vendor": "Anysphere",
+   "name": "Cursor",
+   "category": "code",
+   "domains": [
+    "cursor.sh",
+    "api2.cursor.sh",
+    "cursor.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [
+    "Cursor/"
+   ],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "grammarly",
+   "vendor": "Grammarly",
+   "name": "Grammarly",
+   "category": "plugin/extension",
+   "domains": [
+    "grammarly.com",
+    "www.grammarly.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "otter",
+   "vendor": "Otter.ai",
+   "name": "Otter.ai",
+   "category": "meeting",
+   "domains": [
+    "otter.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  }
+ ]
+}

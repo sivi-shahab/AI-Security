@@ -36,7 +36,7 @@ func (r *Releaser) Sync(ctx context.Context) error {
 	if rel.Number <= r.current.Load() {
 		return nil
 	}
-	tarball, rev, err := policysvc.Build(ctx, r.FS, r.SigningKey, policysvc.Overrides{"aisec.rules": rel.Rules, "aisec.exceptions": rel.Exceptions})
+	tarball, rev, err := policysvc.Build(ctx, r.FS, r.SigningKey, rel.Overrides())
 	if err != nil {
 		return err
 	}

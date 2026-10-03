@@ -9,6 +9,7 @@ package aisec.decision
 import rego.v1
 
 import data.aisec.cond
+import data.aisec.dest
 import data.aisec.risk
 
 # DEC-2 precedence, strictest last.
@@ -32,6 +33,7 @@ result := {
 	"matched_rules": [],
 	"monitor_rules": [],
 	"exempted_rules": [],
+	"destination": object.get(input, "destination", {}),
 	"policy_id": "aisec.decision",
 	"policy_version": data.aisec.rules.version,
 	# A malformed input is a PEP bug, not user risk: alert on INPUT_SCHEMA_INVALID, do not page the SOC.
@@ -47,6 +49,7 @@ result := {
 	"matched_rules": sort({r.id | some r in enforced}),
 	"monitor_rules": sort({r.id | some r in monitored}),
 	"exempted_rules": sort({r.id | some r in exempted}),
+	"destination": dest.destination,
 	"policy_id": "aisec.decision",
 	"policy_version": data.aisec.rules.version,
 	"risk_score": risk.score,
@@ -85,7 +88,7 @@ in_scope("principal_id", v) if input.principal.id == v
 
 in_scope("group", v) if v in object.get(input.principal, "groups", [])
 
-in_scope("app_id", v) if input.destination.app_id == v
+in_scope("app_id", v) if dest.destination.app_id == v
 
 in_scope("agent_id", v) if input.agent.agent_id == v
 
@@ -111,7 +114,17 @@ sort_objects(s) := [o | some k in sort([json.marshal(x) | some x in s]); o := js
 # risk_score is computed by aisec.risk, never supplied by the PEP.
 value("risk_score") := risk.score
 
-value(field) := object.get(input, split(field, "."), null) if field != "risk_score"
+# destination.* comes from the catalog-corrected destination (aisec.dest).
+value(field) := object.get(dest.destination, array.slice(path, 1, count(path)), null) if {
+	field != "risk_score"
+	path := split(field, ".")
+	path[0] == "destination"
+}
+
+value(field) := object.get(input, split(field, "."), null) if {
+	field != "risk_score"
+	not startswith(field, "destination.")
+}
 
 # Rule-set validation. The bundle builder refuses to publish while this is non-empty, so a typo in a
 # rule can never turn into a rule that silently never matches.

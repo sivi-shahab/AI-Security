@@ -177,9 +177,13 @@ func (sim *Simulator) run(ctx context.Context, id string, v Version, from, to ti
 
 func (sim *Simulator) evaluate(ctx context.Context, v Version, from, to time.Time, includeCorpus bool) (Result, error) {
 	var baseRules, baseExc, candRules []any
+	var extra policysvc.Overrides
 	err := pgx.BeginTxFunc(ctx, sim.Store.db, pgx.TxOptions{AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
 		var err error
 		if baseRules, baseExc, err = composition(ctx, tx, "", nil); err != nil {
+			return err
+		}
+		if extra, err = sim.Store.extra(ctx, tx); err != nil {
 			return err
 		}
 		candRules, _, err = composition(ctx, tx, v.PolicyID, v.Rules)
@@ -188,11 +192,17 @@ func (sim *Simulator) evaluate(ctx context.Context, v Version, from, to time.Tim
 	if err != nil {
 		return Result{}, err
 	}
-	base, err := policysvc.NewEvaluator(ctx, sim.Store.fsys, overrides("simulation-baseline", baseRules, baseExc))
+	withExtra := func(ov policysvc.Overrides) policysvc.Overrides {
+		for k, x := range extra {
+			ov[k] = x
+		}
+		return ov
+	}
+	base, err := policysvc.NewEvaluator(ctx, sim.Store.fsys, withExtra(overrides("simulation-baseline", baseRules, baseExc)))
 	if err != nil {
 		return Result{}, err
 	}
-	cand, err := policysvc.NewEvaluator(ctx, sim.Store.fsys, overrides(fmt.Sprintf("simulation-%s-v%d", v.Policy, v.Version), candRules, baseExc))
+	cand, err := policysvc.NewEvaluator(ctx, sim.Store.fsys, withExtra(overrides(fmt.Sprintf("simulation-%s-v%d", v.Policy, v.Version), candRules, baseExc)))
 	if err != nil {
 		return Result{}, err
 	}

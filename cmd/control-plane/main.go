@@ -17,6 +17,7 @@ import (
 
 	"aisec/internal/audit"
 	"aisec/internal/authz"
+	"aisec/internal/catalog"
 	"aisec/internal/events"
 	"aisec/internal/identity"
 	"aisec/internal/incident"
@@ -29,7 +30,7 @@ import (
 )
 
 // Env: BUNDLE_SIGNING_KEY_FILE, DATABASE_URL, INCIDENT_KEK_FILE (32 raw bytes), KAFKA_BROKERS, SCHEMA_REGISTRY_URL,
-// TENANT_ID, PUBLIC_URL, OPENSEARCH_URL/USER/PASSWORD (policy simulation reads stored events), and identity (ADR-0002): OIDC_ISSUER, OIDC_AUDIENCE, OIDC_MFA_ACR (comma-separated acr
+// TENANT_ID, PUBLIC_URL, CATALOG_FEED_URL + CATALOG_FEED_PUBKEY_FILE (signed app catalog feed), OPENSEARCH_URL/USER/PASSWORD (policy simulation reads stored events), and identity (ADR-0002): OIDC_ISSUER, OIDC_AUDIENCE, OIDC_MFA_ACR (comma-separated acr
 // values that mean MFA), BREAK_GLASS_SUBS (comma-separated token subs), SCIM_TOKEN_SHA256 (hex).
 func main() {
 	// `control-plane audit anchor|verify ...`: run by the audit-anchor CronJob or via kubectl exec.
@@ -95,12 +96,33 @@ func main() {
 	if err != nil {
 		fail("policy store", err)
 	}
+	// The app catalog joins every release (ticket 16): open it before the first bundle is built.
+	var feedKey []byte
+	if f := os.Getenv("CATALOG_FEED_PUBKEY_FILE"); f != "" {
+		if feedKey, err = os.ReadFile(f); err != nil {
+			fail("catalog feed key", err)
+		}
+	}
+	apps, err := catalog.Open(ctx, db, os.Getenv("TENANT_ID"), policies)
+	if err != nil {
+		fail("app catalog", err)
+	}
 	bundles := &policysvc.Server{}
 	releaser := &lifecycle.Releaser{Store: policies, Server: bundles, FS: policy.Files, SigningKey: string(key), Log: log, Poll: 15 * time.Second}
 	if err := releaser.Sync(ctx); err != nil {
 		fail("build policy bundle", err)
 	}
 	go releaser.Run(ctx)
+	usage, err := kgo.NewClient(kgo.SeedBrokers(strings.Split(os.Getenv("KAFKA_BROKERS"), ",")...),
+		kgo.ConsumerGroup(catalog.Group), kgo.ConsumeTopics(events.Topic), kgo.DisableAutoCommit())
+	if err != nil {
+		fail("kafka client (usage)", err)
+	}
+	go func() {
+		if err := catalog.Consume(ctx, usage, &events.Decoder{SR: rc}, apps, log); err != nil {
+			fail("app usage consumer stopped", err)
+		}
+	}()
 	corpus, err := lifecycle.LoadCorpus(policy.Files)
 	if err != nil {
 		fail("simulation corpus", err)
@@ -110,6 +132,16 @@ func main() {
 	simulator := &lifecycle.Simulator{Store: policies, Source: search.Events, Corpus: corpus, MaxEvents: 100_000, Log: log}
 	go func() {
 		for t := time.NewTicker(time.Hour); ctx.Err() == nil; <-t.C {
+			if err := apps.PurgeUsage(ctx, time.Now()); err != nil {
+				log.Error("purge app usage", "err", err)
+			}
+			if url := os.Getenv("CATALOG_FEED_URL"); url != "" {
+				if v, err := apps.PullFeed(ctx, &http.Client{Timeout: time.Minute}, url, feedKey); err != nil {
+					log.Error("catalog feed pull", "err", err)
+				} else if v > 0 {
+					log.Info("catalog feed imported", "version", v)
+				}
+			}
 			if expired, notified, err := policies.Sweep(ctx, time.Now()); err != nil {
 				log.Error("exception sweep", "err", err)
 			} else if expired+notified > 0 {
@@ -167,8 +199,9 @@ func main() {
 		}
 	})
 	routes(rt, deps{bundles: bundles, scim: ids.SCIMHandler(scimHash, os.Getenv("PUBLIC_URL")), metrics: metrics, incidents: incidents, identity: ids,
-		policies: policies, simulator: simulator})
+		policies: policies, simulator: simulator, apps: apps, feedKey: feedKey})
 	server.Run("control-plane", rt.Mux)
 	cancel()
 	kc.Close()
+	usage.Close()
 }

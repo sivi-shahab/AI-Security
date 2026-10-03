@@ -22,3 +22,7 @@ Mengukur baseline pemakaian AI sebelum enforcement. Baseline ini dipakai untuk m
 
 ## Out of scope
 Inline enforcement dan konteks personal/corporate account (butuh proxy inline, tiket 22/23).
+
+## Catatan dari ticket 16
+- Sudah ada: seed katalog (15 app, `internal/catalog/seed.json`), matcher fingerprint + rumus confidence (`internal/catalog/match.go`, dites), dan `APP_USAGE_DAILY`. Ticket ini tinggal ingest log batch, memperluas seed ke ~200 app, dan laporan baseline.
+

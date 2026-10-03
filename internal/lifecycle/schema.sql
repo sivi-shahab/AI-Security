@@ -46,10 +46,13 @@ CREATE TABLE IF NOT EXISTS policy.releases (
   number      bigserial   PRIMARY KEY,
   rules       jsonb       NOT NULL,  -- data.aisec.rules
   exceptions  jsonb       NOT NULL,  -- data.aisec.exceptions
+  data        jsonb       NOT NULL DEFAULT '{}',  -- other documents by dotted path, e.g. aisec.catalog (ticket 16)
   reason      text        NOT NULL,
   created_by  text        NOT NULL,
   created_at  timestamptz NOT NULL DEFAULT now()
 );
+
+ALTER TABLE policy.releases ADD COLUMN IF NOT EXISTS data jsonb NOT NULL DEFAULT '{}';
 
 CREATE TABLE IF NOT EXISTS policy.simulations (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -8,6 +8,8 @@ package aisec.risk
 
 import rego.v1
 
+import data.aisec.dest
+
 cfg := data.aisec.risk.config
 
 levels := cfg.levels
@@ -17,7 +19,7 @@ account := object.get(input.principal, "account_context", "corporate")
 f_sens := object.get(levels.sensitivity, input.content.sensitivity, 0)
 
 # A personal account at the destination is as bad as a blocked app.
-f_dest := max({object.get(levels.sanction, input.destination.sanction, 0), object.get(levels.account_context, account, 0)})
+f_dest := max({object.get(levels.sanction, dest.destination.sanction, 0), object.get(levels.account_context, account, 0)})
 
 f_attack := max({
 	object.get(input.content, "injection_score", 0),
@@ -73,11 +75,11 @@ nik_count := sum([c.count | some c in input.content.classes; c.type == "PII_ID.N
 
 to_personal_or_unsanctioned if account == "personal"
 
-to_personal_or_unsanctioned if input.destination.sanction in non_sanctioned
+to_personal_or_unsanctioned if dest.destination.sanction in non_sanctioned
 
 set_override["secret-to-unsanctioned"] := ov["secret-to-unsanctioned"].score if {
 	outbound
-	input.destination.sanction != "sanctioned"
+	dest.destination.sanction != "sanctioned"
 	has_class("SECRET.*")
 }
 

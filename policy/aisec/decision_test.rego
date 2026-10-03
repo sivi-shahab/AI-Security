@@ -178,6 +178,8 @@ test_tpl_injection_high if {
 # --- ADR-0001 residency: every sensitivity x region x sanction ---------------------------------------
 
 expected_residency(sens, region, sanction) := "block" if {
+	sanction == "blocked" # tpl.blocked-app, wherever the app runs
+} else := "block" if {
 	region != "ID"
 	true in {sens == "restricted", sanction != "sanctioned"}
 } else := "redact" if {
@@ -260,4 +262,39 @@ test_exception_only_lifts_named_rule if {
 	r.action == "block"
 	r.matched_rules == ["tpl.secret-to-any-ai"]
 	r.exempted_rules == ["tpl.pii-id-to-unsanctioned"]
+}
+
+# --- ticket 16: the catalog is the source of truth for known apps ----------------------------------------
+
+catalog := {"version": 3, "apps": {
+	"deepseek": {"sanction": "blocked", "region": "CN", "trains_on_data": true},
+	"copilot": {"sanction": "sanctioned", "region": "ID", "trains_on_data": false},
+}}
+
+test_catalog_overrides_pep_destination if {
+	# The PEP thinks deepseek is sanctioned and onshore; the catalog says blocked and offshore.
+	inp := with_patch({"destination": {"app_id": "deepseek", "sanction": "sanctioned", "region": "ID"}, "content": {"sensitivity": "internal", "classes": []}})
+	r := decision.result with input as inp with data.aisec.catalog as catalog
+	r.action == "block"
+	"res.offshore-unsanctioned" in r.matched_rules
+	r.destination.sanction == "blocked"
+	r.destination.region == "CN"
+	r.risk_score >= 20
+}
+
+test_catalog_unknown_app_keeps_pep_values if {
+	inp := with_patch({"destination": {"app_id": "new-ai-tool", "sanction": "unsanctioned", "region": "US"}, "content": {"sensitivity": "public", "classes": []}})
+	r := decision.result with input as inp with data.aisec.catalog as catalog
+	r.destination == {"app_id": "new-ai-tool", "sanction": "unsanctioned", "region": "US"}
+	r.action == "block" # offshore + unsanctioned
+}
+
+test_catalog_change_flips_decision if {
+	inp := with_patch({"destination": {"app_id": "copilot", "sanction": "sanctioned", "region": "ID"}, "content": {"sensitivity": "internal", "classes": []}})
+	before := decision.result with input as inp with data.aisec.catalog as catalog
+	before.action == "allow"
+	blocked := json.patch(catalog, [{"op": "replace", "path": "/apps/copilot/sanction", "value": "blocked"}])
+	r := decision.result with input as inp with data.aisec.catalog as blocked
+	r.destination.sanction == "blocked"
+	r.risk_score > before.risk_score
 }

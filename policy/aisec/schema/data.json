@@ -80,7 +80,7 @@
     "$id": "aisec/pdp/output/v1",
     "title": "PDP decision v1 (spec FR-POL-3)",
     "type": "object",
-    "required": ["action", "obligations", "reason_codes", "matched_rules", "monitor_rules", "exempted_rules", "policy_id", "policy_version", "risk_score", "risk_overrides", "risk_version"],
+    "required": ["action", "obligations", "reason_codes", "matched_rules", "monitor_rules", "exempted_rules", "destination", "policy_id", "policy_version", "risk_score", "risk_overrides", "risk_version"],
     "additionalProperties": false,
     "properties": {
       "action": {"enum": ["block", "quarantine", "require_approval", "tokenize", "redact", "warn", "allow"]},
@@ -100,6 +100,7 @@
       "matched_rules": {"type": "array", "items": {"type": "string"}, "description": "Enforcing rules that matched."},
       "monitor_rules": {"type": "array", "items": {"type": "string"}, "description": "Monitor-only rules that matched; they never change action."},
       "exempted_rules": {"type": "array", "items": {"type": "string"}, "description": "Enforcing rules that matched but an approved exception lifted (FR-POL-7)."},
+      "destination": {"type": "object", "description": "The destination decided on: the PEP's, with sanction/region/trains_on_data from the app catalog when the app is in it (ticket 16). PEPs record these in events."},
       "policy_id": {"type": "string"},
       "policy_version": {"type": "string"},
       "risk_score": {"type": "integer", "minimum": 0, "maximum": 100, "description": "FR-RISK-1/2, computed by the PDP; never supplied by the PEP."},

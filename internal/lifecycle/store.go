@@ -54,6 +54,17 @@ type Store struct {
 	db     *pgxpool.Pool
 	tenant string
 	fsys   fs.FS
+
+	// Extra adds other modules' documents to every release (the app catalog, ticket 16), read in the releasing
+	// transaction. Set before the first release is cut.
+	Extra func(ctx context.Context, tx pgx.Tx) (policysvc.Overrides, error)
+}
+
+func (s *Store) extra(ctx context.Context, tx pgx.Tx) (policysvc.Overrides, error) {
+	if s.Extra == nil {
+		return policysvc.Overrides{}, nil
+	}
+	return s.Extra(ctx, tx)
 }
 
 // Open applies the schema and, on an empty database, activates the built-in FR-POL-8 templates as policy "builtin"
@@ -164,10 +175,15 @@ func overrides(version string, rules, exceptions []any) policysvc.Overrides {
 	}
 }
 
-// release snapshots the current composition as the next release, after the engine accepted it (duplicate rule
-// ids across policies, unknown ops, … abort the whole change), and notifies every replica on commit.
+// release snapshots the current composition (plus Extra documents) as the next release, after the engine accepted
+// it (duplicate rule ids across policies, unknown ops, … abort the whole change), and notifies every replica on
+// commit.
 func (s *Store) release(ctx context.Context, tx pgx.Tx, actor, reason string) (int64, error) {
 	rules, exceptions, err := composition(ctx, tx, "", nil)
+	if err != nil {
+		return 0, err
+	}
+	extra, err := s.extra(ctx, tx)
 	if err != nil {
 		return 0, err
 	}
@@ -176,11 +192,14 @@ func (s *Store) release(ctx context.Context, tx pgx.Tx, actor, reason string) (i
 		return 0, err
 	}
 	ov := overrides(fmt.Sprintf("release-%d", n), rules, exceptions)
+	for k, v := range extra {
+		ov[k] = v
+	}
 	if _, err := policysvc.NewEvaluator(ctx, s.fsys, ov); err != nil {
 		return 0, fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
-	_, err = tx.Exec(ctx, "INSERT INTO policy.releases (number, rules, exceptions, reason, created_by) VALUES ($1, $2, $3, $4, $5)",
-		n, ov["aisec.rules"], ov["aisec.exceptions"], reason, actor)
+	_, err = tx.Exec(ctx, "INSERT INTO policy.releases (number, rules, exceptions, data, reason, created_by) VALUES ($1, $2, $3, $4, $5, $6)",
+		n, ov["aisec.rules"], ov["aisec.exceptions"], extra, reason, actor)
 	if err != nil {
 		return 0, err
 	}
@@ -188,11 +207,26 @@ func (s *Store) release(ctx context.Context, tx pgx.Tx, actor, reason string) (i
 	return n, err
 }
 
+// CutRelease lets another module (the catalog) publish its change to the sidecars inside its own transaction.
+func (s *Store) CutRelease(ctx context.Context, tx pgx.Tx, actor, reason string) (int64, error) {
+	return s.release(ctx, tx, actor, reason)
+}
+
+// Overrides is what a release puts into the bundle.
+func (r Release) Overrides() policysvc.Overrides {
+	ov := policysvc.Overrides{"aisec.rules": r.Rules, "aisec.exceptions": r.Exceptions}
+	for k, v := range r.Data {
+		ov[k] = v
+	}
+	return ov
+}
+
 // Release is a stored release.
 type Release struct {
 	Number     int64          `json:"number"`
 	Rules      map[string]any `json:"rules"`
 	Exceptions map[string]any `json:"exceptions"`
+	Data       map[string]any `json:"data"`
 	Reason     string         `json:"reason"`
 	CreatedBy  string         `json:"created_by"`
 	CreatedAt  time.Time      `json:"created_at"`
@@ -200,13 +234,13 @@ type Release struct {
 
 func (s *Store) Latest(ctx context.Context) (Release, error) {
 	var r Release
-	err := s.db.QueryRow(ctx, "SELECT number, rules, exceptions, reason, created_by, created_at FROM policy.releases ORDER BY number DESC LIMIT 1").
-		Scan(&r.Number, &r.Rules, &r.Exceptions, &r.Reason, &r.CreatedBy, &r.CreatedAt)
+	err := s.db.QueryRow(ctx, "SELECT number, rules, exceptions, data, reason, created_by, created_at FROM policy.releases ORDER BY number DESC LIMIT 1").
+		Scan(&r.Number, &r.Rules, &r.Exceptions, &r.Data, &r.Reason, &r.CreatedBy, &r.CreatedAt)
 	return r, notFound(err)
 }
 
 func (s *Store) Releases(ctx context.Context, limit int) ([]Release, error) {
-	rows, err := s.db.Query(ctx, "SELECT number, rules, exceptions, reason, created_by, created_at FROM policy.releases ORDER BY number DESC LIMIT $1", limit)
+	rows, err := s.db.Query(ctx, "SELECT number, rules, exceptions, data, reason, created_by, created_at FROM policy.releases ORDER BY number DESC LIMIT $1", limit)
 	if err != nil {
 		return nil, err
 	}

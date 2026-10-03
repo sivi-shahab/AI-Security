@@ -2,6 +2,16 @@
   "version": "builtin-1",
   "items": [
     {
+      "id": "tpl.blocked-app",
+      "description": "FR-DISC-4: app berstatus blocked di katalog = block (semua sensitivity, onshore maupun offshore).",
+      "when": [
+        {"field": "direction", "op": "in", "value": ["request", "tool_call"]},
+        {"field": "destination.sanction", "op": "eq", "value": "blocked"}
+      ],
+      "action": "block",
+      "reason": "APP_BLOCKED"
+    },
+    {
       "id": "tpl.pii-id-to-unsanctioned",
       "description": "FR-POL-8: PII-ID ke AI yang tidak sanctioned = block.",
       "when": [
