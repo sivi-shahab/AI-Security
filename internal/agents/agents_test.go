@@ -77,7 +77,6 @@ func setup(t *testing.T) (*Store, *lifecycle.Store, *pgxpool.Pool) {
 	return s, ls, db
 }
 
-
 func agent(id, owner, unit, ref string) Agent {
 	a := Agent{ID: id, Name: id, BusinessUnit: unit, Purpose: "reconcile invoices", Environment: "prod", RiskTier: "high",
 		Identity: Identity{Type: "spiffe", Ref: ref}, Tools: []Tool{{Name: "erp.read", Risk: "low"}, {Name: "payments.transfer", Risk: "high",
