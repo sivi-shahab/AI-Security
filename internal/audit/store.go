@@ -37,8 +37,18 @@ func Open(ctx context.Context, url string) (*Store, error) {
 
 func (s *Store) Close() { s.db.Close() }
 
-// Append writes the next entry. ts comes from the database clock under the lock, so ts never decreases with seq.
-func (s *Store) Append(ctx context.Context, tenantID, actor, action string, target map[string]any) (Entry, error) {
+// Append writes the next entry in its own transaction.
+func (s *Store) Append(ctx context.Context, tenantID, actor, action string, target map[string]any) (e Entry, err error) {
+	err = pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		e, err = AppendTx(ctx, tx, tenantID, actor, action, target)
+		return err
+	})
+	return e, err
+}
+
+// AppendTx writes the next entry inside the caller's transaction, so the audited change and its record commit or
+// roll back together. ts comes from the database clock under the lock, so ts never decreases with seq.
+func AppendTx(ctx context.Context, tx pgx.Tx, tenantID, actor, action string, target map[string]any) (Entry, error) {
 	raw, err := json.Marshal(target)
 	if err != nil {
 		return Entry{}, err
@@ -47,25 +57,22 @@ func (s *Store) Append(ctx context.Context, tenantID, actor, action string, targ
 	if err := json.Unmarshal(raw, &e.Target); err != nil { // same shape jsonb reads back as
 		return Entry{}, err
 	}
-	err = pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1)", appendLock); err != nil {
-			return err
-		}
-		e.PrevHash = Genesis
-		err := tx.QueryRow(ctx, "SELECT seq, hash FROM audit.audit_log ORDER BY seq DESC LIMIT 1").Scan(&e.Seq, &e.PrevHash)
-		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-			return err
-		}
-		e.Seq++
-		if err := tx.QueryRow(ctx, "SELECT date_trunc('microseconds', clock_timestamp())").Scan(&e.TS); err != nil {
-			return err
-		}
-		e.TS = e.TS.UTC()
-		e.Hash = Hash(e.PrevHash, e)
-		_, err = tx.Exec(ctx, `INSERT INTO audit.audit_log (seq, tenant_id, ts, actor, action, target, prev_hash, hash)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, e.Seq, e.TenantID, e.TS, e.Actor, e.Action, e.Target, e.PrevHash, e.Hash)
-		return err
-	})
+	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1)", appendLock); err != nil {
+		return Entry{}, err
+	}
+	e.PrevHash = Genesis
+	err = tx.QueryRow(ctx, "SELECT seq, hash FROM audit.audit_log ORDER BY seq DESC LIMIT 1").Scan(&e.Seq, &e.PrevHash)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return Entry{}, err
+	}
+	e.Seq++
+	if err := tx.QueryRow(ctx, "SELECT date_trunc('microseconds', clock_timestamp())").Scan(&e.TS); err != nil {
+		return Entry{}, err
+	}
+	e.TS = e.TS.UTC()
+	e.Hash = Hash(e.PrevHash, e)
+	_, err = tx.Exec(ctx, `INSERT INTO audit.audit_log (seq, tenant_id, ts, actor, action, target, prev_hash, hash)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, e.Seq, e.TenantID, e.TS, e.Actor, e.Action, e.Target, e.PrevHash, e.Hash)
 	return e, err
 }
 

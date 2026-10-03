@@ -1,0 +1,370 @@
+package incident
+
+import (
+	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	_ "embed"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"aisec/internal/audit"
+	"aisec/internal/events"
+)
+
+//go:embed schema.sql
+var schemaSQL string
+
+var (
+	ErrNotFound  = errors.New("not found")
+	ErrForbidden = errors.New("forbidden")
+)
+
+// Store is the Postgres-backed incident module (schema incident). Every analyst action is written to the audit
+// log (same database) in the transaction that makes it.
+type Store struct {
+	db    *pgxpool.Pool
+	audit *audit.Store
+	kek   []byte // wraps per-incident DEKs. ponytail: file key; a KMS/HSM unwrap call when spec §10.1's KMS lands
+}
+
+func Open(ctx context.Context, db *pgxpool.Pool, auditLog *audit.Store, kek []byte) (*Store, error) {
+	if len(kek) != 32 {
+		return nil, fmt.Errorf("incident KEK must be 32 bytes, got %d", len(kek))
+	}
+	if _, err := db.Exec(ctx, schemaSQL); err != nil {
+		return nil, fmt.Errorf("apply incident schema: %w", err)
+	}
+	return &Store{db: db, audit: auditLog, kek: kek}, nil
+}
+
+// Ingest folds one decision event into incidents: below MinRisk it is ignored; otherwise it joins the open incident
+// with its DedupKey whose events are within DedupWindow, or opens a new one. Redelivered events are no-ops.
+func (s *Store) Ingest(ctx context.Context, e events.Event, raw []byte, now time.Time) (id string, created bool, err error) {
+	if e.RiskScore < MinRisk {
+		return "", false, nil
+	}
+	ts, err := time.Parse(time.RFC3339Nano, e.TS)
+	if err != nil {
+		return "", false, err
+	}
+	key, sev := DedupKey(e), SeverityFor(e.RiskScore)
+	err = pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		// Serialize per key so two consumers cannot open twin incidents.
+		if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1 || '|' || $2, 0))", e.TenantID, key); err != nil {
+			return err
+		}
+		if err := tx.QueryRow(ctx, "SELECT incident_id FROM incident.incident_events WHERE event_id = $1", e.EventID).Scan(&id); err == nil {
+			return nil
+		} else if !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
+		err := tx.QueryRow(ctx, `SELECT id FROM incident.incidents
+			WHERE tenant_id = $1 AND dedup_key = $2 AND state = ANY($3)
+			  AND $4 BETWEEN first_event_at - $5::interval AND last_event_at + $5::interval
+			ORDER BY last_event_at DESC LIMIT 1`, e.TenantID, key, OpenStates, ts, DedupWindow.String()).Scan(&id)
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			created = true
+			dek := make([]byte, 32)
+			if _, err := rand.Read(dek); err != nil {
+				return err
+			}
+			if err := tx.QueryRow(ctx, "SELECT gen_random_uuid()").Scan(&id); err != nil {
+				return err
+			}
+			wrapped, err := seal(s.kek, dek, []byte("dek:"+id))
+			if err != nil {
+				return err
+			}
+			_, err = tx.Exec(ctx, `INSERT INTO incident.incidents
+				(id, tenant_id, dedup_key, title, state, severity, max_risk, event_count, first_event_at, last_event_at, opened_at, ack_deadline, dek_wrapped)
+				VALUES ($1, $2, $3, $4, 'New', $5, $6, 0, $7, $7, $8, $9, $10)`,
+				id, e.TenantID, key, title(e), sev, e.RiskScore, ts, now, ackDeadline(sev, now), wrapped)
+			if err != nil {
+				return err
+			}
+		case err != nil:
+			return err
+		default:
+			if err := s.escalate(ctx, tx, id, sev, now); err != nil {
+				return err
+			}
+		}
+		_, err = tx.Exec(ctx, `UPDATE incident.incidents SET event_count = event_count + 1, max_risk = greatest(max_risk, $2),
+			first_event_at = least(first_event_at, $3), last_event_at = greatest(last_event_at, $3) WHERE id = $1`, id, e.RiskScore, ts)
+		if err != nil {
+			return err
+		}
+		_, err = tx.Exec(ctx, "INSERT INTO incident.incident_events (incident_id, event_id, ts, risk_score, event) VALUES ($1, $2, $3, $4, $5)",
+			id, e.EventID, ts, e.RiskScore, json.RawMessage(raw))
+		return err
+	})
+	return id, created, err
+}
+
+func title(e events.Event) string {
+	classes := make([]string, 0, len(e.Classes))
+	for _, c := range e.Classes {
+		classes = append(classes, c.Type)
+	}
+	what := strings.Join(classes, ", ")
+	if what == "" {
+		what = strings.Join(e.ReasonCodes, ", ")
+	}
+	return fmt.Sprintf("%s %s to %s via %s", e.Action, what, e.AppID, e.Channel)
+}
+
+func ackDeadline(sev string, from time.Time) *time.Time {
+	sla, ok := AckSLA[sev]
+	if !ok {
+		return nil
+	}
+	t := from.Add(sla)
+	return &t
+}
+
+// escalate raises severity to at least sev (never lowers it). While unacknowledged, a tighter SLA starts now.
+func (s *Store) escalate(ctx context.Context, tx pgx.Tx, id, sev string, now time.Time) error {
+	var cur string
+	var state State
+	if err := tx.QueryRow(ctx, "SELECT severity, state FROM incident.incidents WHERE id = $1 FOR UPDATE", id).Scan(&cur, &state); err != nil {
+		return err
+	}
+	if SeverityRank(sev) <= SeverityRank(cur) {
+		return nil
+	}
+	_, err := tx.Exec(ctx, `UPDATE incident.incidents SET severity = $2,
+		ack_deadline = CASE WHEN state = 'New' THEN least(coalesce(ack_deadline, $3), $3) ELSE ack_deadline END
+		WHERE id = $1`, id, sev, ackDeadline(sev, now))
+	return err
+}
+
+// Incident is the API view.
+type Incident struct {
+	ID             string     `json:"id"`
+	TenantID       string     `json:"tenant_id"`
+	Title          string     `json:"title"`
+	State          State      `json:"state"`
+	Severity       string     `json:"severity"`
+	MaxRisk        int        `json:"max_risk"`
+	EventCount     int        `json:"event_count"`
+	FirstEventAt   time.Time  `json:"first_event_at"`
+	LastEventAt    time.Time  `json:"last_event_at"`
+	OpenedAt       time.Time  `json:"opened_at"`
+	AckDeadline    *time.Time `json:"ack_deadline,omitempty"`
+	AcknowledgedAt *time.Time `json:"acknowledged_at,omitempty"`
+	ResolvedAt     *time.Time `json:"resolved_at,omitempty"`
+	ClosedAt       *time.Time `json:"closed_at,omitempty"`
+}
+
+const incidentCols = `id, tenant_id::text, title, state, severity, max_risk, event_count, first_event_at, last_event_at, opened_at,
+	ack_deadline, acknowledged_at, resolved_at, closed_at`
+
+func scanIncident(row pgx.Row) (Incident, error) {
+	var i Incident
+	err := row.Scan(&i.ID, &i.TenantID, &i.Title, &i.State, &i.Severity, &i.MaxRisk, &i.EventCount, &i.FirstEventAt, &i.LastEventAt,
+		&i.OpenedAt, &i.AckDeadline, &i.AcknowledgedAt, &i.ResolvedAt, &i.ClosedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		err = ErrNotFound
+	}
+	return i, err
+}
+
+// List filters by severity and/or state (empty = any), most severe and oldest first.
+func (s *Store) List(ctx context.Context, severity, state string, limit int) ([]Incident, error) {
+	rows, err := s.db.Query(ctx, `SELECT `+incidentCols+` FROM incident.incidents
+		WHERE ($1 = '' OR severity = $1) AND ($2 = '' OR state = $2)
+		ORDER BY array_position(ARRAY['critical','high','medium','low'], severity), opened_at LIMIT $3`, severity, state, limit)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Incident, error) { return scanIncident(r) })
+}
+
+func (s *Store) Get(ctx context.Context, id string) (Incident, error) {
+	return scanIncident(s.db.QueryRow(ctx, "SELECT "+incidentCols+" FROM incident.incidents WHERE id = $1", id))
+}
+
+// Overdue counts unacknowledged incidents past their SLA (FR-INC-7 alerting).
+func (s *Store) Overdue(ctx context.Context, now time.Time) (n int, err error) {
+	err = s.db.QueryRow(ctx, "SELECT count(*) FROM incident.incidents WHERE state = 'New' AND ack_deadline < $1", now).Scan(&n)
+	return n, err
+}
+
+// Transition moves an incident along FR-INC-3. Leaving New acknowledges it (stops the SLA timer).
+func (s *Store) Transition(ctx context.Context, id string, to State, note, actor string, now time.Time) (Incident, error) {
+	var tenant string
+	var from State
+	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		err := tx.QueryRow(ctx, "SELECT tenant_id::text, state FROM incident.incidents WHERE id = $1 FOR UPDATE", id).Scan(&tenant, &from)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		} else if err != nil {
+			return err
+		}
+		if err := CheckTransition(from, to, note); err != nil {
+			return err
+		}
+		_, err = tx.Exec(ctx, `UPDATE incident.incidents SET state = $2,
+			acknowledged_at = CASE WHEN acknowledged_at IS NULL AND $3 = 'New' THEN $4 ELSE acknowledged_at END,
+			resolved_at = CASE WHEN $2 = 'Resolved' THEN $4 WHEN $2 = 'Investigating' THEN NULL ELSE resolved_at END,
+			closed_at = CASE WHEN $2 = 'Closed' THEN $4 ELSE closed_at END
+			WHERE id = $1`, id, to, from, now)
+		if err != nil {
+			return err
+		}
+		_, err = tx.Exec(ctx, "INSERT INTO incident.transitions (incident_id, at, actor, from_state, to_state, note) VALUES ($1, $2, $3, $4, $5, $6)",
+			id, now, actor, from, to, note)
+		if err != nil {
+			return err
+		}
+		_, err = audit.AppendTx(ctx, tx, tenant, actor, "incident.transition", map[string]any{"incident": id, "from": from, "to": to})
+		return err
+	})
+	if err != nil {
+		return Incident{}, err
+	}
+	return s.Get(ctx, id)
+}
+
+// RaiseSeverity is FR-INC-2's manual raise; lowering is refused.
+func (s *Store) RaiseSeverity(ctx context.Context, id, sev, note, actor string, now time.Time) (Incident, error) {
+	if SeverityRank(sev) < 0 {
+		return Incident{}, fmt.Errorf("%w: unknown severity %q", ErrInvalidTransition, sev)
+	}
+	cur, err := s.Get(ctx, id)
+	if err != nil {
+		return Incident{}, err
+	}
+	if SeverityRank(sev) <= SeverityRank(cur.Severity) {
+		return Incident{}, fmt.Errorf("%w: severity can only be raised (%s -> %s)", ErrInvalidTransition, cur.Severity, sev)
+	}
+	err = pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		if err := s.escalate(ctx, tx, id, sev, now); err != nil {
+			return err
+		}
+		_, err := audit.AppendTx(ctx, tx, cur.TenantID, actor, "incident.severity", map[string]any{"incident": id, "from": cur.Severity, "to": sev, "note": note})
+		return err
+	})
+	if err != nil {
+		return Incident{}, err
+	}
+	return s.Get(ctx, id)
+}
+
+// EvidenceMeta describes evidence without revealing it.
+type EvidenceMeta struct {
+	ID        string    `json:"id"`
+	Kind      string    `json:"kind"`
+	SHA256    string    `json:"sha256"`
+	CreatedAt time.Time `json:"created_at"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
+// Events returns the redacted evidence: the decision events as they arrived.
+func (s *Store) Events(ctx context.Context, id string) ([]json.RawMessage, error) {
+	rows, err := s.db.Query(ctx, "SELECT event FROM incident.incident_events WHERE incident_id = $1 ORDER BY ts", id)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowTo[json.RawMessage])
+}
+
+func (s *Store) Evidence(ctx context.Context, id string) ([]EvidenceMeta, error) {
+	rows, err := s.db.Query(ctx, "SELECT id, kind, sha256, created_at, expires_at FROM incident.evidence WHERE incident_id = $1 ORDER BY created_at", id)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowToStructByPos[EvidenceMeta])
+}
+
+// RawTTL is the forensic-capture default (spec §10.2).
+const RawTTL = 30 * 24 * time.Hour
+
+func (s *Store) dek(ctx context.Context, id string) ([]byte, error) {
+	var wrapped []byte
+	err := s.db.QueryRow(ctx, "SELECT dek_wrapped FROM incident.incidents WHERE id = $1", id).Scan(&wrapped)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	} else if err != nil {
+		return nil, err
+	}
+	return open(s.kek, wrapped, []byte("dek:"+id))
+}
+
+// AddRawEvidence stores forensic-capture content encrypted with the incident's DEK. Only call it when the matched
+// policy has forensic_capture on (FR-INC-4).
+func (s *Store) AddRawEvidence(ctx context.Context, id, kind string, raw []byte, now time.Time) (string, error) {
+	dek, err := s.dek(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	var eid string
+	if err := s.db.QueryRow(ctx, "SELECT gen_random_uuid()").Scan(&eid); err != nil {
+		return "", err
+	}
+	ct, err := seal(dek, raw, []byte("evidence:"+id+":"+eid))
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(raw)
+	_, err = s.db.Exec(ctx, "INSERT INTO incident.evidence (id, incident_id, kind, ciphertext, sha256, created_at, expires_at) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+		eid, id, kind, ct, hex.EncodeToString(sum[:]), now, now.Add(RawTTL))
+	return eid, err
+}
+
+// MinJustification is the shortest justification accepted for unmask.
+const MinJustification = 10
+
+// Unmask decrypts raw evidence for a caller holding evidence.unmask with a justification. Every attempt, granted
+// or denied, is written to the audit log first (FR-INC-4, spec §12.3 telemetry).
+func (s *Store) Unmask(ctx context.Context, c Caller, id, eid, justification string) ([]byte, error) {
+	inc, err := s.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	reason := ""
+	switch {
+	case !c.Perms[PermUnmask]:
+		reason = "missing permission " + PermUnmask
+	case len(strings.TrimSpace(justification)) < MinJustification:
+		reason = fmt.Sprintf("justification shorter than %d characters", MinJustification)
+	}
+	target := map[string]any{"incident": id, "evidence": eid, "justification": justification}
+	if reason != "" {
+		target["denied"] = reason
+		if _, err := s.audit.Append(ctx, inc.TenantID, c.ID, "evidence.unmask.denied", target); err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("%w: %s", ErrForbidden, reason)
+	}
+	var ct []byte
+	err = s.db.QueryRow(ctx, "SELECT ciphertext FROM incident.evidence WHERE id = $1 AND incident_id = $2", eid, id).Scan(&ct)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	} else if err != nil {
+		return nil, err
+	}
+	if _, err := s.audit.Append(ctx, inc.TenantID, c.ID, "evidence.unmask", target); err != nil {
+		return nil, err // no audit record, no plaintext
+	}
+	dek, err := s.dek(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return open(dek, ct, []byte("evidence:"+id+":"+eid))
+}
+
+// PurgeExpired deletes raw evidence past its TTL.
+func (s *Store) PurgeExpired(ctx context.Context, now time.Time) (int64, error) {
+	tag, err := s.db.Exec(ctx, "DELETE FROM incident.evidence WHERE expires_at < $1", now)
+	return tag.RowsAffected(), err
+}

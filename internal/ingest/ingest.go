@@ -5,11 +5,9 @@ package ingest
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"time"
 
-	"github.com/santhosh-tekuri/jsonschema/v6"
 	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/sr"
@@ -17,12 +15,7 @@ import (
 	"aisec/internal/events"
 )
 
-const (
-	Group = "event-ingest"
-	// Rejections that are not about the payload itself.
-	rejectWireFormat    = "wire_format"
-	rejectUnknownSchema = "unknown_schema"
-)
+const Group = "event-ingest"
 
 // Ingester consumes events.Topic. At-least-once: offsets are committed only after OpenSearch accepted the batch,
 // and documents are indexed by event_id so redelivery overwrites instead of duplicating.
@@ -33,11 +26,12 @@ type Ingester struct {
 	Metrics *Metrics
 	Log     *slog.Logger
 
-	schemas map[int]*jsonschema.Schema // only versions registered under events.Subject
+	dec events.Decoder
 }
 
 // Run consumes until ctx is cancelled.
 func (in *Ingester) Run(ctx context.Context) error {
+	in.dec = events.Decoder{SR: in.SR}
 	go in.trackLag(ctx)
 	for {
 		fetches := in.KC.PollRecords(ctx, 1000)
@@ -71,60 +65,24 @@ func (in *Ingester) Run(ctx context.Context) error {
 
 // accept returns the document to index, or a zero Doc when the record is rejected (and counted).
 func (in *Ingester) accept(ctx context.Context, r *kgo.Record) (Doc, error) {
-	var serde sr.ConfluentHeader
-	id, payload, err := serde.DecodeID(r.Value)
-	if err != nil {
-		in.reject(r, rejectWireFormat)
-		return Doc{}, nil
-	}
-	schema, err := in.schema(ctx, id)
+	payload, reason, err := in.dec.Decode(ctx, r.Value)
 	if err != nil {
 		return Doc{}, err
-	}
-	if schema == nil {
-		in.reject(r, rejectUnknownSchema)
-		return Doc{}, nil
-	}
-	if reason := events.Check(payload, schema); reason != "" {
-		in.reject(r, reason)
-		return Doc{}, nil
 	}
 	var meta struct {
 		EventID string    `json:"event_id"`
 		TS      time.Time `json:"ts"`
 	}
-	if err := json.Unmarshal(payload, &meta); err != nil {
-		in.reject(r, events.RejectSchema)
+	if reason == "" && json.Unmarshal(payload, &meta) != nil {
+		reason = events.RejectSchema
+	}
+	if reason != "" {
+		// Count and log where the record was; never its content.
+		in.Metrics.Rejected(reason)
+		in.Log.Warn("event rejected", "reason", reason, "partition", r.Partition, "offset", r.Offset)
 		return Doc{}, nil
 	}
 	return Doc{Index: IndexFor(meta.TS), ID: meta.EventID, Body: payload, Received: r.Timestamp}, nil
-}
-
-// reject counts and logs where the record was; never its content.
-func (in *Ingester) reject(r *kgo.Record, reason string) {
-	in.Metrics.Rejected(reason)
-	in.Log.Warn("event rejected", "reason", reason, "partition", r.Partition, "offset", r.Offset)
-}
-
-// schema returns the compiled schema for id, nil if id is not a version of events.Subject. Unknown ids trigger
-// one refresh, so a newly registered version is picked up without a restart.
-func (in *Ingester) schema(ctx context.Context, id int) (*jsonschema.Schema, error) {
-	if s, ok := in.schemas[id]; ok {
-		return s, nil
-	}
-	versions, err := in.SR.Schemas(ctx, events.Subject)
-	if err != nil {
-		return nil, fmt.Errorf("schema registry: %w", err)
-	}
-	in.schemas = map[int]*jsonschema.Schema{}
-	for _, v := range versions {
-		s, err := events.Compile(v.Schema.Schema)
-		if err != nil {
-			return nil, fmt.Errorf("%s v%d: %w", events.Subject, v.Version, err)
-		}
-		in.schemas[v.ID] = s
-	}
-	return in.schemas[id], nil
 }
 
 // index retries until OpenSearch takes the batch or ctx ends: nothing is committed before that.

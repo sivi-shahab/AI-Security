@@ -262,14 +262,17 @@ func TestPipelineIntegration(t *testing.T) {
 			break
 		}
 	}
+	// The topic may hold records from earlier runs: counters are lower bounds, the exact check is the _count below.
+	if got := metrics.Indexed.Load(); got < n {
+		t.Errorf("events_indexed_total %d < %d", got, n)
+	}
 	for _, want := range []string{
 		"kafka_consumer_lag{",
-		`events_rejected_total{reason="raw_content"} 1`,
-		`events_rejected_total{reason="unredacted_snippet"} 1`,
-		`events_rejected_total{reason="wire_format"} 1`,
-		`events_rejected_total{reason="unknown_schema"} 1`,
-		`events_rejected_total{reason="schema"} 1`,
-		fmt.Sprintf("events_indexed_total %d", n),
+		`events_rejected_total{reason="raw_content"}`,
+		`events_rejected_total{reason="unredacted_snippet"}`,
+		`events_rejected_total{reason="wire_format"}`,
+		`events_rejected_total{reason="unknown_schema"}`,
+		`events_rejected_total{reason="schema"}`,
 	} {
 		if !strings.Contains(text.String(), want) {
 			t.Errorf("metrics missing %q:\n%s", want, text.String())

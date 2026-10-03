@@ -73,3 +73,19 @@ spec:
           labels: {severity: warning}
           annotations:
             summary: p95 produce-to-index delay above 55 s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: aisec-incidents
+  namespace: aisec
+spec:
+  groups:
+    - name: incidents
+      rules:
+        # FR-INC-7: critical acknowledged <= 15 min, high <= 1 h. Scraped from control-plane /metrics.
+        - alert: IncidentAckOverdue
+          expr: max(incident_ack_overdue) > 0
+          labels: {severity: critical, category: security}
+          annotations:
+            summary: "{{ $value }} incident(s) past their acknowledge SLA"
