@@ -1,9 +1,12 @@
 # Data-at-rest discovery (spec §4.3, ticket 31): the M365 connector worker and the Tika extraction service.
 # Both parse untrusted files, so both run under gVisor (RuntimeClass "gvisor", provided by the cluster) as
 # non-root with read-only roots. Tika gets no egress and only the worker may reach it.
-# Secret connector-worker (out of band): DATABASE_URL, TENANT_PEPPER, M365_TENANT_ID, M365_CLIENT_ID,
-# M365_CLIENT_SECRET (Entra app, read-only: Sites.Read.All, Files.Read.All, User.Read.All), M365_DOMAINS,
-# M365_LABELS (JSON Purview label id → sensitivity), SCAN_INTERVAL (optional).
+# Secret connector-worker (out of band): DATABASE_URL, TENANT_PEPPER, LABELS, SCAN_INTERVAL, and the variables of
+# each source in use (cmd/connector-worker): M365_*, GDRIVE_ADMIN + GDRIVE_DOMAINS, S3_*, GCS_HMAC_*, AZURE_BLOB_*,
+# CLAUDE_COMPLIANCE_KEY, CHATGPT_COMPLIANCE_KEY + CHATGPT_WORKSPACE, EVENTS_TOKEN_SHA256.
+# Secret connector-worker-files (optional): gdrive-key.json (service account with domain-wide delegation).
+# Bucket notifications (MinIO/S3 webhook, GCS Pub/Sub push, Azure Event Grid) POST to
+# http(s)://<ingress>/events/{s3|gcs|azure}?token=… → Service connector-worker.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -31,7 +34,8 @@ spec:
           envFrom: [{secretRef: {name: connector-worker}}]
           env:
             - {name: TIKA_URL, value: "http://tika:9998"}
-          ports: [{containerPort: 8080, name: http}]
+            - {name: GDRIVE_KEY_FILE, value: /secrets/gdrive-key.json}
+          ports: [{containerPort: 8080, name: http}]  # /healthz, POST /events/{source}
           readinessProbe: {httpGet: {path: /healthz, port: http}}
           livenessProbe: {httpGet: {path: /healthz, port: http}}
           resources:
@@ -41,6 +45,17 @@ spec:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities: {drop: [ALL]}
+          volumeMounts: [{name: files, mountPath: /secrets, readOnly: true}]
+      volumes:
+        - {name: files, secret: {secretName: connector-worker-files, optional: true}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: connector-worker
+spec:
+  selector: {app: connector-worker}
+  ports: [{port: 80, targetPort: http, name: http}]
 ---
 apiVersion: apps/v1
 kind: Deployment

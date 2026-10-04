@@ -2,76 +2,184 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 
+	"aisec/internal/connector"
+	"aisec/internal/connector/compliance"
+	"aisec/internal/connector/gdrive"
 	"aisec/internal/connector/m365"
+	"aisec/internal/connector/objstore"
 	"aisec/internal/datascan"
 	"aisec/internal/extract"
 	"aisec/internal/privacy"
 	"aisec/internal/server"
 )
 
-// Env: DATABASE_URL, TENANT_PEPPER, M365_TENANT_ID, M365_CLIENT_ID, M365_CLIENT_SECRET (Entra app: Sites.Read.All,
-// Files.Read.All, User.Read.All), M365_DOMAINS (comma-separated tenant e-mail domains), M365_LABELS (JSON: Purview
-// label id → public|internal|confidential|restricted), TIKA_URL (sandboxed Tika for PDF/legacy Office; optional),
-// SCAN_INTERVAL (Go duration, default 1h).
+// Env (each source is on when its variables are set; at least one):
+//
+//	common   DATABASE_URL, TENANT_PEPPER, TIKA_URL (optional), SCAN_INTERVAL (default 1h), LABELS (JSON: external
+//	         label id → public|internal|confidential|restricted)
+//	m365     M365_TENANT_ID, M365_CLIENT_ID, M365_CLIENT_SECRET, M365_DOMAINS
+//	gdrive   GDRIVE_KEY_FILE (service account JSON, domain-wide delegation), GDRIVE_ADMIN, GDRIVE_DOMAINS; also runs
+//	         the OAuth grant audit (AI apps → shadow-agent review queue)
+//	s3       S3_ENDPOINT, S3_ACCESS_KEY, S3_SECRET_KEY, S3_INSECURE=true for plain HTTP, S3_BUCKETS (optional)
+//	gcs      GCS_HMAC_ACCESS, GCS_HMAC_SECRET, GCS_BUCKETS (optional) — the S3-interoperable XML API
+//	azure    AZURE_BLOB_ENDPOINT, AZURE_BLOB_SAS (list+read account SAS), AZURE_CONTAINERS (optional)
+//	claude   CLAUDE_COMPLIANCE_KEY (Compliance Access Key, read:compliance_user_data)
+//	chatgpt  CHATGPT_COMPLIANCE_KEY, CHATGPT_WORKSPACE
+//	events   EVENTS_TOKEN_SHA256 (hex): bucket notifications at POST /events/{s3|gcs|azure}
 func main() {
 	log := privacy.NewLogger("connector-worker")
 	fail := func(msg string, err error) {
 		log.Error(msg, "err", err)
 		os.Exit(1)
 	}
-	for _, k := range []string{"DATABASE_URL", "TENANT_PEPPER", "M365_TENANT_ID", "M365_CLIENT_ID", "M365_CLIENT_SECRET", "M365_DOMAINS"} {
-		if os.Getenv(k) == "" {
+	env := os.Getenv
+	list := func(k string) []string {
+		var out []string
+		for _, v := range strings.Split(env(k), ",") {
+			if v = strings.TrimSpace(v); v != "" {
+				out = append(out, v)
+			}
+		}
+		return out
+	}
+	for _, k := range []string{"DATABASE_URL", "TENANT_PEPPER"} {
+		if env(k) == "" {
 			fail("config", errors.New(k+" is required"))
 		}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	db, err := pgxpool.New(ctx, os.Getenv("DATABASE_URL"))
+	db, err := pgxpool.New(ctx, env("DATABASE_URL"))
 	if err != nil {
 		fail("database", err)
 	}
 	if err := datascan.Open(ctx, db); err != nil {
 		fail("data schema", err)
 	}
+	if err := objstore.Open(ctx, db); err != nil {
+		fail("object event schema", err)
+	}
 	labels := map[string]string{}
-	if v := os.Getenv("M365_LABELS"); v != "" {
+	if v := env("LABELS"); v != "" {
 		if err := json.Unmarshal([]byte(v), &labels); err != nil {
-			fail("M365_LABELS", err)
+			fail("LABELS", err)
 		}
 	}
 	interval := time.Hour
-	if v := os.Getenv("SCAN_INTERVAL"); v != "" {
+	if v := env("SCAN_INTERVAL"); v != "" {
 		if interval, err = time.ParseDuration(v); err != nil || interval <= 0 {
 			fail("SCAN_INTERVAL", errors.New("positive Go duration"))
 		}
 	}
 	var tika *extract.Tika
-	if u := os.Getenv("TIKA_URL"); u != "" {
+	if u := env("TIKA_URL"); u != "" {
 		tika = &extract.Tika{URL: u, HTTP: &http.Client{Timeout: 2 * time.Minute}}
 	}
-	sc := &datascan.Scanner{DB: db, Source: "m365", Pepper: []byte(os.Getenv("TENANT_PEPPER")), Labels: labels, Tika: tika, Log: log,
-		Conn: m365.New(os.Getenv("M365_TENANT_ID"), os.Getenv("M365_CLIENT_ID"), os.Getenv("M365_CLIENT_SECRET"), strings.Split(os.Getenv("M365_DOMAINS"), ","))}
-	sc.Defaults()
+	pepper := []byte(env("TENANT_PEPPER"))
+	var scanners []*datascan.Scanner
+	add := func(source string, c connector.Connector) {
+		s := &datascan.Scanner{DB: db, Source: source, Conn: c, Pepper: pepper, Labels: labels, Tika: tika, Log: log}
+		s.Defaults()
+		scanners = append(scanners, s)
+	}
+	var audits []*datascan.OAuthAudit
+
+	if env("M365_TENANT_ID") != "" {
+		add("m365", m365.New(env("M365_TENANT_ID"), env("M365_CLIENT_ID"), env("M365_CLIENT_SECRET"), list("M365_DOMAINS")))
+	}
+	if f := env("GDRIVE_KEY_FILE"); f != "" {
+		key, err := os.ReadFile(f)
+		if err != nil {
+			fail("GDRIVE_KEY_FILE", err)
+		}
+		d, err := gdrive.New(key, env("GDRIVE_ADMIN"), list("GDRIVE_DOMAINS"))
+		if err != nil {
+			fail("google drive", err)
+		}
+		add("gdrive", d)
+		audits = append(audits, &datascan.OAuthAudit{DB: db, Source: "gworkspace", Fetch: d.OAuthGrants, Pepper: pepper, Now: time.Now})
+	}
+	formats := map[string]string{}
+	addS3 := func(source, kind, endpoint, access, secret string, secure bool, buckets []string) {
+		c, err := minio.New(endpoint, &minio.Options{Creds: credentials.NewStaticV4(access, secret, ""), Secure: secure})
+		if err != nil {
+			fail(source, err)
+		}
+		add(source, &objstore.Store{Source: source, DB: db, Backend: objstore.NewS3(c, kind), Buckets: buckets, PolicyCache: time.Minute})
+		formats[source] = kind
+	}
+	if ep := env("S3_ENDPOINT"); ep != "" {
+		addS3("s3", "s3", ep, env("S3_ACCESS_KEY"), env("S3_SECRET_KEY"), env("S3_INSECURE") != "true", list("S3_BUCKETS"))
+	}
+	if env("GCS_HMAC_ACCESS") != "" {
+		addS3("gcs", "gcs", "storage.googleapis.com", env("GCS_HMAC_ACCESS"), env("GCS_HMAC_SECRET"), true, list("GCS_BUCKETS"))
+	}
+	if ep := env("AZURE_BLOB_ENDPOINT"); ep != "" {
+		add("azure", &objstore.Store{Source: "azure", DB: db, Backend: &objstore.Azure{Endpoint: ep, SAS: env("AZURE_BLOB_SAS"),
+			HTTP: &http.Client{Timeout: 5 * time.Minute}}, Buckets: list("AZURE_CONTAINERS"), PolicyCache: time.Minute})
+		formats["azure"] = "azure"
+	}
+	if k := env("CLAUDE_COMPLIANCE_KEY"); k != "" {
+		add("claude", &compliance.Claude{BaseURL: "https://api.anthropic.com", Key: k, HTTP: &http.Client{Timeout: 5 * time.Minute}, Backoff: connector.DefaultBackoff})
+	}
+	if k := env("CHATGPT_COMPLIANCE_KEY"); k != "" {
+		add("chatgpt", &compliance.ChatGPT{BaseURL: "https://api.chatgpt.com", Key: k, Workspace: env("CHATGPT_WORKSPACE"),
+			HTTP: &http.Client{Timeout: 5 * time.Minute}, Backoff: connector.DefaultBackoff})
+	}
+	if len(scanners) == 0 {
+		fail("config", errors.New("no data source configured"))
+	}
+
+	mux := http.NewServeMux()
+	if len(formats) > 0 {
+		sum, err := hex.DecodeString(env("EVENTS_TOKEN_SHA256"))
+		if err != nil || len(sum) != 32 {
+			fail("EVENTS_TOKEN_SHA256 must be a hex SHA-256 (object storage sources need event notifications)", err)
+		}
+		(&objstore.Receiver{DB: db, TokenSHA256: sum, Formats: formats, Now: time.Now}).Routes(mux)
+	}
 	go func() {
 		for t := time.NewTicker(interval); ctx.Err() == nil; <-t.C {
-			start := time.Now()
-			st, err := sc.Run(ctx)
-			log.Info("scan pass", "source", sc.Source, "containers", st.Containers, "items", st.Items, "content_read", st.ContentRead,
-				"acl_read", st.ACLRead, "unchanged", st.Unchanged, "deleted", st.Deleted, "errors", st.Errors, "took", time.Since(start).String())
-			if err != nil {
-				log.Error("scan pass", "err", err)
+			for _, s := range scanners {
+				run(ctx, log, s)
+			}
+			if len(formats) > 0 {
+				if _, err := objstore.PurgeEvents(ctx, db, time.Now()); err != nil {
+					log.Error("purge object events", "err", err)
+				}
+			}
+			for _, a := range audits {
+				if n, err := a.Run(ctx); err != nil {
+					log.Error("oauth audit", "source", a.Source, "err", err)
+				} else {
+					log.Info("oauth audit", "source", a.Source, "ai_apps", n)
+				}
 			}
 		}
 	}()
-	server.Run("connector-worker", http.NewServeMux())
+	server.Run("connector-worker", mux)
 	cancel()
 	db.Close()
+}
+
+func run(ctx context.Context, log *slog.Logger, s *datascan.Scanner) {
+	start := time.Now()
+	st, err := s.Run(ctx)
+	log.Info("scan pass", "source", s.Source, "containers", st.Containers, "items", st.Items, "content_read", st.ContentRead,
+		"acl_read", st.ACLRead, "unchanged", st.Unchanged, "deleted", st.Deleted, "errors", st.Errors, "took", time.Since(start).String())
+	if err != nil {
+		log.Error("scan pass", "source", s.Source, "err", err)
+	}
 }

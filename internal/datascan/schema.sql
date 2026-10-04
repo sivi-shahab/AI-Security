@@ -54,3 +54,21 @@ CREATE TABLE IF NOT EXISTS data.acl_entries (
   external      boolean NOT NULL
 );
 CREATE INDEX IF NOT EXISTS acl_entries_asset ON data.acl_entries (asset_id);
+
+-- Third-party OAuth grants (ticket 32): which apps users let into bank data, and whether they are AI apps.
+CREATE TABLE IF NOT EXISTS data.oauth_grants (
+  source      text        NOT NULL,
+  client_id   text        NOT NULL,
+  app_name    text        NOT NULL,
+  scopes      text[]      NOT NULL DEFAULT '{}',
+  ai          boolean     NOT NULL,
+  first_seen  timestamptz NOT NULL,
+  last_seen   timestamptz NOT NULL,
+  PRIMARY KEY (source, client_id)
+);
+CREATE TABLE IF NOT EXISTS data.oauth_grant_users (
+  source     text NOT NULL,
+  client_id  text NOT NULL,
+  user_hash  text NOT NULL,  -- HMAC of the e-mail (tenant pepper)
+  PRIMARY KEY (source, client_id, user_hash)
+);

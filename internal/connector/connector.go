@@ -30,6 +30,7 @@ type Item struct {
 	Path        string
 	ContentTag  string // changes when, and only when, the content changes (Graph cTag, S3 ETag)
 	Size        int64
+	MimeType    string // when the source says (e.g. Google-native documents, exported rather than downloaded)
 	Modified    time.Time
 	Folder      bool
 	Deleted     bool
@@ -59,4 +60,14 @@ type Connector interface {
 	// Labels are the item's external sensitivity labels (Purview label ids; FR-CLS-6). nil when none.
 	Labels(ctx context.Context, it Item) ([]string, error)
 	Remediate(ctx context.Context, it Item, action string) error
+}
+
+// OAuthGrant is one user authorizing a third-party app on the bank's tenant (Google token audit, Entra consent):
+// the feed for AI apps that reach bank data through OAuth rather than the network (FR-AGT-1 shadow agents).
+type OAuthGrant struct {
+	ClientID string
+	AppName  string
+	Scopes   []string
+	User     string // e-mail; hashed before storage
+	At       time.Time
 }

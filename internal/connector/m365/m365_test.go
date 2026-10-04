@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"aisec/internal/connector"
+	"aisec/internal/connector/connectortest"
 	"aisec/internal/connector/m365/m365test"
 )
 
@@ -21,9 +22,9 @@ func setup(t *testing.T) (*m365test.Graph, *Graph, *[]time.Duration) {
 		{ID: "od-1", Name: "OneDrive Budi", Type: "business", Items: map[string]*m365test.Item{}},
 	}
 	var waits []time.Duration
-	g := &Graph{BaseURL: fake.URL(), HTTP: fake.Client(), Domains: []string{"bankmega.com"}, MaxRetries: 3,
-		BackoffBase: time.Second, MaxBackoff: time.Minute,
-		Sleep: func(_ context.Context, d time.Duration) error { waits = append(waits, d); return nil }}
+	g := &Graph{BaseURL: fake.URL(), HTTP: fake.Client(), Domains: []string{"bankmega.com"}, Backoff: connector.Backoff{Retries: 3,
+		Base: time.Second, Max: time.Minute,
+		Sleep: func(_ context.Context, d time.Duration) error { waits = append(waits, d); return nil }}}
 	return fake, g, &waits
 }
 
@@ -118,7 +119,7 @@ func TestThrottling(t *testing.T) {
 	*waits = nil
 	fake.Throttle["/extractSensitivityLabels"] = &m365test.Throttle{Times: 10, Status: http.StatusTooManyRequests, RetryAfter: "600"}
 	_, err := g.Labels(context.Background(), it)
-	var se *StatusError
+	var se *connector.StatusError
 	if !errors.As(err, &se) || !se.Throttled || len(*waits) != 3 || (*waits)[0] != time.Minute {
 		t.Errorf("exhausted: %v, waits %v (capped at MaxBackoff)", err, *waits)
 	}
@@ -137,4 +138,21 @@ func TestLinksStayOnGraph(t *testing.T) {
 	if _, err := g.Items(context.Background(), connector.Container{ID: "lib-1"}, "https://evil.example/v1.0/drives/x/root/delta"); err == nil {
 		t.Error("followed a delta link off the Graph host")
 	}
+}
+
+// AC (ticket 32): the M365 connector against the SDK contract.
+func TestContract(t *testing.T) {
+	fake, g, _ := setup(t)
+	connectortest.Run(t, connectortest.Harness{
+		Conn: g, Container: "lib-1",
+		Put: func(_ *testing.T, name string, b []byte) string {
+			fake.Put("lib-1", "id-"+name, m365test.Item{Name: name, Path: "/drive/root:", Content: b})
+			return "id-" + name
+		},
+		Delete: func(_ *testing.T, id string) { fake.Delete("lib-1", id) },
+		Share: func(_ *testing.T, id string) {
+			fake.Share("lib-1", id, []map[string]any{m365test.LinkPerm("anonymous")})
+		},
+		SharingInFeed: true,
+	})
 }

@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -27,12 +26,8 @@ type Graph struct {
 	BaseURL string       // https://graph.microsoft.com/v1.0
 	HTTP    *http.Client // carries the app's OAuth token (client credentials)
 	Domains []string     // the tenant's own e-mail domains: anything else is external
-	// Throttling (FR-DATA, Graph 429/503): Retry-After is honored; without it, exponential backoff from
-	// BackoffBase, at most MaxRetries retries, never longer than MaxBackoff per wait.
-	MaxRetries  int
-	BackoffBase time.Duration
-	MaxBackoff  time.Duration
-	Sleep       func(ctx context.Context, d time.Duration) error
+	// Backoff handles Graph throttling (429/503/504): Retry-After honored, otherwise exponential.
+	Backoff connector.Backoff
 }
 
 // New connects with an Entra ID app registration (client credentials).
@@ -41,42 +36,17 @@ func New(tenant, clientID, secret string, domains []string) *Graph {
 		TokenURL: "https://login.microsoftonline.com/" + url.PathEscape(tenant) + "/oauth2/v2.0/token",
 		Scopes:   []string{"https://graph.microsoft.com/.default"}}
 	return &Graph{BaseURL: "https://graph.microsoft.com/v1.0", HTTP: cc.Client(context.Background()), Domains: domains,
-		MaxRetries: 6, BackoffBase: time.Second, MaxBackoff: 2 * time.Minute, Sleep: sleep}
-}
-
-func sleep(ctx context.Context, d time.Duration) error {
-	t := time.NewTimer(d)
-	defer t.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-t.C:
-		return nil
-	}
-}
-
-// StatusError is a Graph answer the connector does not retry. Throttled: retries were exhausted.
-type StatusError struct {
-	Code      int
-	Throttled bool
-	What      string
-}
-
-func (e *StatusError) Error() string {
-	if e.Throttled {
-		return fmt.Sprintf("graph %d, still throttled after retries: %s", e.Code, e.What)
-	}
-	return fmt.Sprintf("graph %d: %s", e.Code, e.What)
+		Backoff: connector.DefaultBackoff}
 }
 
 // refused: a definite non-throttling Graph error (missing OneDrive, unsupported file type, …).
 func refused(err error) bool {
-	var se *StatusError
+	var se *connector.StatusError
 	return errors.As(err, &se) && !se.Throttled
 }
 
-// do sends one Graph request, waiting out throttling (429, 503, 504). Absolute URLs (nextLink, deltaLink) are
-// used as given; they must stay on the Graph host, so a tampered link cannot carry the token elsewhere.
+// do sends one Graph request, waiting out throttling. Absolute URLs (nextLink, deltaLink) are used as given;
+// they must stay on the Graph host, so a tampered link cannot carry the token elsewhere.
 func (g *Graph) do(ctx context.Context, method, ref string, body any, header map[string]string) (*http.Response, error) {
 	u := ref
 	if !strings.HasPrefix(ref, "https://") && !strings.HasPrefix(ref, "http://") {
@@ -88,7 +58,7 @@ func (g *Graph) do(ctx context.Context, method, ref string, body any, header map
 	if body != nil {
 		payload, _ = json.Marshal(body)
 	}
-	for attempt := 0; ; attempt++ {
+	return g.Backoff.Do(ctx, g.HTTP, func() (*http.Request, error) {
 		req, err := http.NewRequestWithContext(ctx, method, u, bytes.NewReader(payload))
 		if err != nil {
 			return nil, err
@@ -99,36 +69,8 @@ func (g *Graph) do(ctx context.Context, method, ref string, body any, header map
 		for k, v := range header {
 			req.Header.Set(k, v)
 		}
-		resp, err := g.HTTP.Do(req)
-		if err != nil {
-			return nil, err
-		}
-		if resp.StatusCode != http.StatusTooManyRequests && resp.StatusCode != http.StatusServiceUnavailable && resp.StatusCode != http.StatusGatewayTimeout {
-			if resp.StatusCode >= 300 {
-				_ = resp.Body.Close()
-				return nil, &StatusError{Code: resp.StatusCode, What: method + " " + strings.SplitN(u, "?", 2)[0]}
-			}
-			return resp, nil
-		}
-		_ = resp.Body.Close()
-		if attempt >= g.MaxRetries {
-			return nil, &StatusError{Code: resp.StatusCode, Throttled: true, What: method + " " + strings.SplitN(u, "?", 2)[0]}
-		}
-		if err := g.Sleep(ctx, g.wait(resp.Header.Get("Retry-After"), attempt)); err != nil {
-			return nil, err
-		}
-	}
-}
-
-// wait: Retry-After (seconds or HTTP date) when Graph says, else base × 2^attempt; capped at MaxBackoff.
-func (g *Graph) wait(retryAfter string, attempt int) time.Duration {
-	d := g.BackoffBase << attempt
-	if s, err := strconv.Atoi(strings.TrimSpace(retryAfter)); err == nil && s >= 0 {
-		d = time.Duration(s) * time.Second
-	} else if t, err := http.ParseTime(retryAfter); err == nil {
-		d = time.Until(t)
-	}
-	return min(max(d, 0), g.MaxBackoff)
+		return req, nil
+	}, nil)
 }
 
 func (g *Graph) getJSON(ctx context.Context, ref string, header map[string]string, out any) error {

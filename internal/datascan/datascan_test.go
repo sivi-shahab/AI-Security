@@ -15,9 +15,15 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"aisec/internal/agents"
+	"aisec/internal/audit"
+	"aisec/internal/catalog"
+	"aisec/internal/connector"
 	"aisec/internal/connector/m365"
 	"aisec/internal/connector/m365/m365test"
 	"aisec/internal/identity"
+	"aisec/internal/lifecycle"
+	"aisec/policy"
 )
 
 const nik = "3201011505900001"
@@ -65,8 +71,8 @@ func setup(t *testing.T) (*pgxpool.Pool, *m365test.Graph, *Scanner) {
 	fake := m365test.New()
 	t.Cleanup(fake.Close)
 	fake.Drives = []*m365test.Drive{{ID: "lib-1", Name: "Kredit", Type: "documentLibrary", Items: map[string]*m365test.Item{}}}
-	g := &m365.Graph{BaseURL: fake.URL(), HTTP: fake.Client(), Domains: []string{"bankmega.com"}, MaxRetries: 5, BackoffBase: time.Second,
-		MaxBackoff: time.Minute, Sleep: func(context.Context, time.Duration) error { return nil }}
+	g := &m365.Graph{BaseURL: fake.URL(), HTTP: fake.Client(), Domains: []string{"bankmega.com"}, Backoff: connector.Backoff{Retries: 5,
+		Base: time.Second, Max: time.Minute, Sleep: func(context.Context, time.Duration) error { return nil }}}
 	s := &Scanner{DB: db, Source: "m365", Conn: g, Pepper: []byte("pepper"), Labels: map[string]string{"lbl-restricted": "restricted"},
 		Log: slog.New(slog.DiscardHandler), Now: func() time.Time { return time.Date(2026, 10, 4, 9, 0, 0, 0, time.UTC) }}
 	s.Defaults()
@@ -228,5 +234,81 @@ func TestAdaptiveSampling(t *testing.T) {
 	}
 	if n := read("ktp"); n != 200 {
 		t.Errorf("dense library: %d of 200 read, want all", n)
+	}
+}
+
+// Google token audit → OAuth grants; AI apps among them (by keyword or the AI app catalog) join the shadow-agent
+// review queue.
+func TestOAuthAudit(t *testing.T) {
+	db, _, _ := setup(t)
+	ctx := context.Background()
+	u := db.Config().ConnString()
+	al, err := audit.Open(ctx, u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(al.Close)
+	ls, err := lifecycle.Open(ctx, db, "00000000-0000-0000-0000-000000000001", policy.Files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := catalog.Open(ctx, db, "00000000-0000-0000-0000-000000000001", ls); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := agents.Open(ctx, db, "00000000-0000-0000-0000-000000000001", ls); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 10, 4, 9, 0, 0, 0, time.UTC)
+	var asked []time.Time
+	grants := []connector.OAuthGrant{
+		{ClientID: "c-chatgpt", AppName: "ChatGPT", Scopes: []string{"drive.readonly"}, User: "ani@bankmega.com", At: now.Add(-2 * time.Hour)},
+		{ClientID: "c-chatgpt", AppName: "ChatGPT", Scopes: []string{"gmail.readonly"}, User: "Budi@bankmega.com", At: now.Add(-time.Hour)},
+		{ClientID: "c-gram", AppName: "Grammarly for Chrome", User: "ani@bankmega.com", At: now.Add(-time.Hour)}, // in the AI catalog
+		{ClientID: "c-zoom", AppName: "Zoom for Google Workspace", User: "ani@bankmega.com", At: now.Add(-time.Hour)},
+		{ClientID: "c-drive", AppName: "Google Drive for desktop", User: "ani@bankmega.com", At: now.Add(-time.Hour)}, // vendor Google: not AI
+	}
+	a := &OAuthAudit{DB: db, Source: "gworkspace", Pepper: []byte("p"), Now: func() time.Time { return now },
+		Fetch: func(_ context.Context, since time.Time) ([]connector.OAuthGrant, error) {
+			asked = append(asked, since)
+			return grants, nil
+		}}
+	for range 2 { // the second pass re-reads the overlap: nothing doubles
+		if n, err := a.Run(ctx); err != nil || n != 2 {
+			t.Fatalf("AI apps: %d %v", n, err)
+		}
+	}
+	if !asked[0].Equal(now.Add(-30*24*time.Hour)) || !asked[1].Equal(now.Add(-Lag)) {
+		t.Errorf("since %v", asked)
+	}
+	rows, _ := db.Query(ctx, `SELECT g.client_id, g.ai, g.scopes, (SELECT count(*) FROM data.oauth_grant_users u WHERE u.client_id = g.client_id)
+		FROM data.oauth_grants g ORDER BY 1`)
+	var got []string
+	for rows.Next() {
+		var id string
+		var ai bool
+		var scopes []string
+		var users int
+		_ = rows.Scan(&id, &ai, &scopes, &users)
+		slices.Sort(scopes)
+		got = append(got, fmt.Sprintf("%s ai=%v users=%d %v", id, ai, users, scopes))
+	}
+	want := []string{"c-chatgpt ai=true users=2 [drive.readonly gmail.readonly]", "c-drive ai=false users=1 []", "c-gram ai=true users=1 []", "c-zoom ai=false users=1 []"}
+	if !slices.Equal(got, want) {
+		t.Errorf("grants:\n got %v\nwant %v", got, want)
+	}
+	var queued []string
+	rows, _ = db.Query(ctx, "SELECT agent_id || ':' || source || ':' || state FROM agents.discovered ORDER BY 1")
+	for rows.Next() {
+		var q string
+		_ = rows.Scan(&q)
+		queued = append(queued, q)
+	}
+	if !slices.Equal(queued, []string{"oauth:c-chatgpt:oauth_grant:pending", "oauth:c-gram:oauth_grant:pending"}) {
+		t.Errorf("review queue %v", queued)
+	}
+	var leak int
+	_ = db.QueryRow(ctx, "SELECT count(*) FROM data.oauth_grant_users WHERE user_hash LIKE '%@%'").Scan(&leak)
+	if leak != 0 {
+		t.Error("e-mail stored in clear")
 	}
 }
