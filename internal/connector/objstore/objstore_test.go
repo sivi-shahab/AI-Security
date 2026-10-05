@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -439,5 +440,41 @@ func TestMinIOWebhook(t *testing.T) {
 	}
 	if len(rows) != 2 || rows[0] != (row{key, normETag(info.ETag), false}) || rows[1].key != key || !rows[1].deleted {
 		t.Fatalf("MinIO delivered %+v (want key %q etag %s, then its removal)", rows, key, normETag(info.ETag))
+	}
+}
+
+// Ticket 33: quarantine moves the object to the quarantine bucket; undo moves it back.
+func TestS3Quarantine(t *testing.T) {
+	pool := db(t)
+	mc := minioClient(t)
+	b, q := bucket(t, mc), bucket(t, mc)
+	ctx := context.Background()
+	if _, err := mc.PutObject(ctx, b, "hr/gaji.csv", strings.NewReader("nik,gaji"), 8, minio.PutObjectOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	be := NewS3(mc, "s3")
+	st := &Store{Source: "minio", DB: pool, Backend: be, QuarantineBucket: q}
+	it := connector.Item{ID: "hr/gaji.csv", ContainerID: b}
+	if _, err := st.Remediate(ctx, it, connector.Action{Kind: connector.Quarantine}, false); err == nil {
+		t.Fatal("moved without remediation credentials")
+	}
+	be.Writer = mc
+	exists := func(bucket, key string) bool {
+		_, err := mc.StatObject(ctx, bucket, key, minio.StatObjectOptions{})
+		return err == nil
+	}
+	plan, err := st.Remediate(ctx, it, connector.Action{Kind: connector.Quarantine}, true)
+	if err != nil || len(plan.Steps) != 1 || !exists(b, "hr/gaji.csv") || exists(q, b+"/hr/gaji.csv") {
+		t.Fatalf("dry run: %+v %v", plan, err)
+	}
+	done, err := st.Remediate(ctx, it, connector.Action{Kind: connector.Quarantine}, false)
+	if err != nil || exists(b, "hr/gaji.csv") || !exists(q, b+"/hr/gaji.csv") {
+		t.Fatalf("execute: %+v %v", done, err)
+	}
+	if _, err := st.Undo(ctx, it, done.Undo, false); err != nil || !exists(b, "hr/gaji.csv") || exists(q, b+"/hr/gaji.csv") {
+		t.Errorf("undo: %v", err)
+	}
+	if _, err := st.Remediate(ctx, it, connector.Action{Kind: connector.RevokeAnyoneLinks}, true); !errors.Is(err, connector.ErrNotSupported) {
+		t.Errorf("revoke on object storage: %v", err)
 	}
 }

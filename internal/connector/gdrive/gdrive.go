@@ -35,12 +35,15 @@ type Drive struct {
 	Admin   string // super admin (or delegated admin) to impersonate for the directory, reports and shared drives
 	Domains []string
 	// Client returns an HTTP client acting as subject (domain-wide delegation).
-	Client  func(subject string) *http.Client
-	Backoff connector.Backoff
+	Client func(subject string) *http.Client
+	// WriteClient is the same with the full drive scope, used only by remediation; nil = none.
+	WriteClient func(subject string) *http.Client
+	Backoff     connector.Backoff
 }
 
-// New builds the connector from a service account key (JSON) with domain-wide delegation.
-func New(keyJSON []byte, admin string, domains []string) (*Drive, error) {
+// New builds the connector from a service account key (JSON) with domain-wide delegation; remediate also asks
+// for the full drive scope, used only to remediate.
+func New(keyJSON []byte, admin string, domains []string, remediate bool) (*Drive, error) {
 	var k struct {
 		Email      string `json:"client_email"`
 		PrivateKey string `json:"private_key"`
@@ -52,19 +55,26 @@ func New(keyJSON []byte, admin string, domains []string) (*Drive, error) {
 	if k.TokenURI == "" {
 		k.TokenURI = "https://oauth2.googleapis.com/token"
 	}
-	var mu sync.Mutex
-	clients := map[string]*http.Client{}
-	return &Drive{BaseURL: "https://www.googleapis.com", Admin: admin, Domains: domains, Backoff: connector.DefaultBackoff,
-		Client: func(subject string) *http.Client {
+	clients := func(scopes []string) func(string) *http.Client {
+		var mu sync.Mutex
+		cache := map[string]*http.Client{}
+		return func(subject string) *http.Client {
 			mu.Lock()
 			defer mu.Unlock()
-			if c, ok := clients[subject]; ok {
+			if c, ok := cache[subject]; ok {
 				return c
 			}
-			c := (&jwt.Config{Email: k.Email, PrivateKey: []byte(k.PrivateKey), TokenURL: k.TokenURI, Scopes: Scopes, Subject: subject}).Client(context.Background())
-			clients[subject] = c
+			c := (&jwt.Config{Email: k.Email, PrivateKey: []byte(k.PrivateKey), TokenURL: k.TokenURI, Scopes: scopes, Subject: subject}).Client(context.Background())
+			cache[subject] = c
 			return c
-		}}, nil
+		}
+	}
+	d := &Drive{BaseURL: "https://www.googleapis.com", Admin: admin, Domains: domains, Backoff: connector.DefaultBackoff, Client: clients(Scopes)}
+	if remediate {
+		// The delegation must then also grant https://www.googleapis.com/auth/drive.
+		d.WriteClient = clients([]string{"https://www.googleapis.com/auth/drive"})
+	}
+	return d, nil
 }
 
 // throttled: Google signals quota as 429 or as 403 with reason rateLimitExceeded / userRateLimitExceeded.
@@ -353,10 +363,6 @@ func (d *Drive) ACL(ctx context.Context, it connector.Item) ([]connector.Grant, 
 
 // Labels: Drive labels need their ids configured per tenant; not read yet.
 func (d *Drive) Labels(context.Context, connector.Item) ([]string, error) { return nil, nil }
-
-func (d *Drive) Remediate(context.Context, connector.Item, string) error {
-	return connector.ErrNotSupported
-}
 
 // OAuthGrants reads token authorizations (Admin SDK Reports, application "token", event "authorize") since a
 // time: which third-party apps users let into their Google data, with what scopes.

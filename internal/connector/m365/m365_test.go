@@ -2,9 +2,11 @@ package m365
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -22,7 +24,7 @@ func setup(t *testing.T) (*m365test.Graph, *Graph, *[]time.Duration) {
 		{ID: "od-1", Name: "OneDrive Budi", Type: "business", Items: map[string]*m365test.Item{}},
 	}
 	var waits []time.Duration
-	g := &Graph{BaseURL: fake.URL(), HTTP: fake.Client(), Domains: []string{"bankmega.com"}, Backoff: connector.Backoff{Retries: 3,
+	g := &Graph{BaseURL: fake.URL(), HTTP: fake.Client(), WriteHTTP: fake.Client(), Domains: []string{"bankmega.com"}, Backoff: connector.Backoff{Retries: 3,
 		Base: time.Second, Max: time.Minute,
 		Sleep: func(_ context.Context, d time.Duration) error { waits = append(waits, d); return nil }}}
 	return fake, g, &waits
@@ -155,4 +157,85 @@ func TestContract(t *testing.T) {
 		},
 		SharingInFeed: true,
 	})
+}
+
+// Ticket 33: dry run vs execution per action, and undo where Graph allows it.
+func TestRemediation(t *testing.T) {
+	ctx := context.Background()
+	fake, g, _ := setup(t)
+	it := connector.Item{ID: "x", ContainerID: "lib-1"}
+	put := func(perms ...map[string]any) {
+		fake.Put("lib-1", "x", m365test.Item{Name: "x.docx", Content: []byte("x"), Parent: "folder-kredit", Labels: []string{"lbl-general"}, Perms: perms})
+		fake.Writes = nil
+	}
+	refs := func() []string {
+		var out []string
+		for _, p := range fake.Item("lib-1", "x").Perms {
+			b, _ := json.Marshal(p)
+			out = append(out, string(b))
+		}
+		return out
+	}
+
+	// remove_grants: a broad group and an external user. The user can be re-invited; the site group cannot.
+	put(m365test.UserPerm("budi@bankmega.com", "owner"), m365test.GroupPerm("Everyone except external users"), m365test.UserPerm("partner@konsultan.co.id", "write"))
+	before := refs()
+	a := connector.Action{Kind: connector.RemoveGrants, Grants: []string{"Everyone except external users", "PARTNER@konsultan.co.id"}}
+	plan, err := g.Remediate(ctx, it, a, true)
+	if err != nil || len(plan.Steps) != 2 || !strings.HasSuffix(plan.Steps[0], "not restorable") || len(fake.Writes) != 0 || !slices.Equal(refs(), before) {
+		t.Fatalf("dry run: %+v %v; writes %v", plan, err, fake.Writes)
+	}
+	done, err := g.Remediate(ctx, it, a, false)
+	if err != nil || !slices.Equal(done.Steps, plan.Steps) || len(fake.Item("lib-1", "x").Perms) != 1 {
+		t.Fatalf("execute: %+v %v, perms %v", done, err, refs())
+	}
+	if _, err := g.Undo(ctx, it, done.Undo, false); err != nil || len(fake.Item("lib-1", "x").Perms) != 2 || !strings.Contains(strings.Join(refs(), " "), "partner@konsultan.co.id") {
+		t.Errorf("undo: %v, perms %v", err, refs())
+	}
+
+	// An inherited grant is the folder's to fix.
+	inherited := m365test.LinkPerm("anonymous")
+	inherited["inheritedFrom"] = map[string]any{"path": "/drive/root:/kredit"}
+	put(inherited)
+	if _, err := g.Remediate(ctx, it, connector.Action{Kind: connector.RevokeAnyoneLinks}, true); err == nil || !strings.Contains(err.Error(), "remediate that folder") {
+		t.Errorf("inherited link: %v", err)
+	}
+
+	// apply_label, undone to the previous label.
+	put()
+	done, err = g.Remediate(ctx, it, connector.Action{Kind: connector.ApplyLabel, Label: "lbl-confidential"}, false)
+	if err != nil || done.Steps[0] != "assign sensitivity label lbl-confidential (was lbl-general)" || fake.Item("lib-1", "x").Labels[0] != "lbl-confidential" {
+		t.Fatalf("label: %+v %v", done, err)
+	}
+	if _, err := g.Remediate(ctx, it, connector.Action{Kind: connector.ApplyLabel, Label: "lbl-confidential"}, true); !errors.Is(err, connector.ErrNothingToDo) {
+		t.Errorf("label again: %v", err)
+	}
+	if _, err := g.Undo(ctx, it, done.Undo, false); err != nil || fake.Item("lib-1", "x").Labels[0] != "lbl-general" {
+		t.Errorf("label undo: %v", err)
+	}
+
+	// quarantine: the dry run creates nothing; executing creates the folder, moves the file, strips sharing but
+	// the owner; undo moves it back and re-invites users.
+	put(m365test.UserPerm("budi@bankmega.com", "owner"), m365test.LinkPerm("anonymous"), m365test.UserPerm("ani@bankmega.com", "read"))
+	plan, err = g.Remediate(ctx, it, connector.Action{Kind: connector.Quarantine}, true)
+	if err != nil || len(plan.Steps) != 3 || plan.Steps[0] != "move to /AISec Quarantine" || len(fake.Writes) != 0 {
+		t.Fatalf("quarantine dry run: %+v %v %v", plan, err, fake.Writes)
+	}
+	done, err = g.Remediate(ctx, it, connector.Action{Kind: connector.Quarantine}, false)
+	x := fake.Item("lib-1", "x")
+	if err != nil || x.Parent != "folder-aisec-quarantine" || len(x.Perms) != 1 || !slices.Equal(done.Steps, plan.Steps) {
+		t.Fatalf("quarantine: %+v %v; parent %s perms %v", done, err, x.Parent, refs())
+	}
+	if _, err := g.Remediate(ctx, it, connector.Action{Kind: connector.Quarantine}, true); !errors.Is(err, connector.ErrNothingToDo) {
+		t.Errorf("quarantined twice: %v", err)
+	}
+	if _, err := g.Undo(ctx, it, done.Undo, false); err != nil || fake.Item("lib-1", "x").Parent != "folder-kredit" || len(fake.Item("lib-1", "x").Perms) != 2 {
+		t.Errorf("quarantine undo: %v, parent %s, perms %v", err, fake.Item("lib-1", "x").Parent, refs())
+	}
+
+	// Without remediation credentials, nothing is attempted.
+	g.WriteHTTP = nil
+	if _, err := g.Remediate(ctx, it, connector.Action{Kind: connector.Quarantine}, true); !errors.Is(err, connector.ErrNotSupported) {
+		t.Errorf("no writer: %v", err)
+	}
 }

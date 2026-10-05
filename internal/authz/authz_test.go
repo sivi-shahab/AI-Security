@@ -55,7 +55,7 @@ func TestCanABACAndExpiry(t *testing.T) {
 func TestEveryRoleUsesKnownPermissions(t *testing.T) {
 	known := []string{authz.DashboardRead, authz.IncidentRead, authz.IncidentWrite, authz.EvidenceUnmask, authz.PolicyRead,
 		authz.PolicyWrite, authz.PolicyPublish, authz.ConfigRead, authz.ConfigWrite, authz.ComplianceRead, authz.ComplianceWrite,
-		authz.AuditRead, authz.AppRead, authz.FeedbackWrite, authz.AgentRead, authz.AgentWrite, authz.AgentApprove, authz.AgentKillGlobal,
+		authz.AuditRead, authz.AppRead, authz.FeedbackWrite, authz.AgentRead, authz.AgentWrite, authz.AgentApprove, authz.AgentKillGlobal, authz.DataRemediate, authz.DataApprove,
 		authz.SelfService, authz.IdentityRead, authz.IdentityAdmin, authz.BreakGlassAccess}
 	for role, perms := range authz.Roles {
 		for _, p := range perms {

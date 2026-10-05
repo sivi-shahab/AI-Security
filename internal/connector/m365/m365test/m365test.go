@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,6 +21,7 @@ type Item struct {
 	Perms      []map[string]any // Graph permission objects
 	Labels     []string
 	Folder     bool
+	Parent     string // parent item id; "" = root
 	deleted    bool
 	cTag       int // bumps on content change
 	version    int // feed version of the last change of any kind
@@ -40,6 +42,8 @@ type Graph struct {
 	// "" = none).
 	Throttle map[string]*Throttle
 	Fetches  map[string]int // "content:<id>", "perms:<id>", "labels:<id>"
+	Writes   []string       // every write call, "<METHOD> <path>"
+	permSeq  int
 }
 
 type Throttle struct {
@@ -74,6 +78,7 @@ func (g *Graph) Put(drive, id string, it Item) {
 	g.version++
 	old := d.Items[id]
 	it.version, it.cTag = g.version, 1
+	it.Perms = g.ids(it.Perms)
 	if old != nil {
 		it.cTag = old.cTag
 		if string(old.Content) != string(it.Content) {
@@ -89,7 +94,25 @@ func (g *Graph) Share(drive, id string, perms []map[string]any) {
 	defer g.mu.Unlock()
 	g.version++
 	it := g.drive(drive).Items[id]
-	it.Perms, it.version = perms, g.version
+	it.Perms, it.version = g.ids(perms), g.version
+}
+
+// ids gives permissions without one an id, as Graph does.
+func (g *Graph) ids(perms []map[string]any) []map[string]any {
+	for _, p := range perms {
+		if p["id"] == nil {
+			g.permSeq++
+			p["id"] = fmt.Sprintf("perm-%d", g.permSeq)
+		}
+	}
+	return perms
+}
+
+// Item returns a copy of an item's current state.
+func (g *Graph) Item(drive, id string) Item {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return *g.drive(drive).Items[id]
 }
 
 func (g *Graph) Delete(drive, id string) {
@@ -149,17 +172,86 @@ func (g *Graph) serve(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	case len(parts) == 4 && parts[0] == "drives" && parts[3] == "delta":
 		g.delta(w, r, g.drive(parts[1]))
+	case len(parts) >= 4 && parts[0] == "drives" && parts[2] == "root:" && r.Method == http.MethodGet:
+		// /drives/{d}/root:/{name}: an item at the root by name
+		name := strings.TrimSuffix(strings.Join(parts[3:], "/"), ":")
+		for id, it := range g.drive(parts[1]).Items {
+			if it.Name == name && it.Parent == "" && !it.deleted {
+				g.json(w, map[string]any{"id": id, "name": it.Name})
+				return
+			}
+		}
+		w.WriteHeader(http.StatusNotFound)
+	case len(parts) == 4 && parts[0] == "drives" && parts[2] == "root" && parts[3] == "children" && r.Method == http.MethodPost:
+		var body struct {
+			Name string `json:"name"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		g.Writes = append(g.Writes, "POST create folder "+body.Name)
+		g.version++
+		id := "folder-" + strings.ReplaceAll(strings.ToLower(body.Name), " ", "-")
+		g.drive(parts[1]).Items[id] = &Item{Name: body.Name, Folder: true, version: g.version}
+		w.WriteHeader(http.StatusCreated)
+		g.json(w, map[string]any{"id": id, "name": body.Name})
 	case len(parts) >= 4 && parts[0] == "drives" && parts[2] == "items":
 		it := g.drive(parts[1]).Items[parts[3]]
 		if it == nil || it.deleted {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
+		if r.Method != http.MethodGet && !strings.HasSuffix(r.URL.Path, "/extractSensitivityLabels") { // a read, despite POST
+			g.Writes = append(g.Writes, r.Method+" "+strings.Join(parts[4:], "/"))
+		}
 		switch {
+		case len(parts) == 4 && r.Method == http.MethodGet:
+			g.json(w, map[string]any{"id": parts[3], "name": it.Name, "parentReference": map[string]any{"id": it.Parent}})
+		case len(parts) == 4 && r.Method == http.MethodPatch:
+			var body struct {
+				Parent struct {
+					ID string `json:"id"`
+				} `json:"parentReference"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			g.version++
+			it.Parent, it.version = body.Parent.ID, g.version
+			g.json(w, map[string]any{"id": parts[3]})
+		case len(parts) == 6 && parts[4] == "permissions" && r.Method == http.MethodDelete:
+			n := len(it.Perms)
+			it.Perms = slices.DeleteFunc(it.Perms, func(p map[string]any) bool { return p["id"] == parts[5] && p["inheritedFrom"] == nil })
+			if len(it.Perms) == n {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			g.version++
+			it.version = g.version
+			w.WriteHeader(http.StatusNoContent)
+		case len(parts) == 5 && parts[4] == "invite" && r.Method == http.MethodPost:
+			var body struct {
+				Recipients []struct {
+					Email string `json:"email"`
+				} `json:"recipients"`
+				Roles []string `json:"roles"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			for _, rc := range body.Recipients {
+				it.Perms = g.ids(append(it.Perms, UserPerm(rc.Email, body.Roles[0])))
+			}
+			g.version++
+			it.version = g.version
+			g.json(w, map[string]any{"value": []any{}})
+		case len(parts) == 5 && parts[4] == "assignSensitivityLabel" && r.Method == http.MethodPost:
+			var body struct {
+				ID string `json:"sensitivityLabelId"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			it.Labels = []string{body.ID}
+			g.version++
+			it.version, it.cTag = g.version, it.cTag+1 // the label is written into the file
+			w.WriteHeader(http.StatusAccepted)
 		case len(parts) == 5 && parts[4] == "content":
 			g.Fetches["content:"+parts[3]]++
 			_, _ = w.Write(it.Content)
-		case len(parts) == 5 && parts[4] == "permissions":
+		case len(parts) == 5 && parts[4] == "permissions" && r.Method == http.MethodGet:
 			g.Fetches["perms:"+parts[3]]++
 			g.json(w, map[string]any{"value": it.Perms})
 		case len(parts) == 5 && parts[4] == "extractSensitivityLabels" && r.Method == http.MethodPost:

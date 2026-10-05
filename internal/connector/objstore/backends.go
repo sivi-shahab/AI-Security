@@ -19,10 +19,23 @@ const listPage = 1000
 
 // --- S3-compatible: MinIO, AWS S3, GCS (XML API with HMAC keys) ---
 
-// S3 is the minio-go backend. kind names what it fronts (s3 or gcs).
+// S3 is the minio-go backend. kind names what it fronts (s3 or gcs). Writer (credentials allowed to copy and
+// delete) is used only to quarantine; nil = none.
 type S3 struct {
 	Client *minio.Client
+	Writer *minio.Client
 	kind   string
+}
+
+// Move copies the object (server side) and deletes the original.
+func (s *S3) Move(ctx context.Context, srcBucket, srcKey, dstBucket, dstKey string) error {
+	if s.Writer == nil {
+		return fmt.Errorf("no remediation credentials for %s", s.kind)
+	}
+	if _, err := s.Writer.CopyObject(ctx, minio.CopyDestOptions{Bucket: dstBucket, Object: dstKey}, minio.CopySrcOptions{Bucket: srcBucket, Object: srcKey}); err != nil {
+		return fmt.Errorf("copy to quarantine: %w", err)
+	}
+	return s.Writer.RemoveObject(ctx, srcBucket, srcKey, minio.RemoveObjectOptions{})
 }
 
 func NewS3(c *minio.Client, kind string) *S3 { return &S3{Client: c, kind: kind} }

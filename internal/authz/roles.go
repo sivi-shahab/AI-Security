@@ -27,7 +27,9 @@ const (
 	AgentRead        = "agent.read"
 	AgentWrite       = "agent.write"
 	AgentKillGlobal  = "agent.kill.global"
-	AgentApprove     = "agent.approve" // HITL: approve a high-risk agent action (FR-AGT-6)
+	AgentApprove     = "agent.approve"          // HITL: approve a high-risk agent action (FR-AGT-6)
+	DataRemediate    = "data.remediate"         // request a data-at-rest remediation, or its undo (FR-DATA-6)
+	DataApprove      = "data.remediate.approve" // approve one requested by someone else
 	SelfService      = "self.request"
 	IdentityRead     = "identity.read"
 	IdentityAdmin    = "identity.admin" // bind roles to users/groups
@@ -42,9 +44,9 @@ var Sensitive = map[string]bool{EvidenceUnmask: true, PolicyPublish: true, Agent
 var Roles = map[string][]string{
 	"ciso":           {DashboardRead, ComplianceRead, IncidentRead},
 	"soc_analyst":    {DashboardRead, IncidentRead, IncidentWrite, AgentRead},
-	"security_admin": {DashboardRead, ConfigRead, ConfigWrite, AgentRead, IdentityRead, IdentityAdmin},
+	"security_admin": {DashboardRead, ConfigRead, ConfigWrite, AgentRead, IdentityRead, IdentityAdmin, DataRemediate, DataApprove},
 	// DLP analysts author policy; publishing goes through 4-eyes approval (ticket 12), not this role alone.
-	"dlp_analyst":     {DashboardRead, PolicyRead, PolicyWrite},
+	"dlp_analyst":     {DashboardRead, PolicyRead, PolicyWrite, DataRemediate},
 	"policy_approver": {PolicyRead, PolicyPublish},
 	"dpo":             {DashboardRead, ComplianceRead, ComplianceWrite, IncidentRead, EvidenceUnmask, AuditRead},
 	"app_owner":       {AppRead, FeedbackWrite},
@@ -56,7 +58,7 @@ var Roles = map[string][]string{
 	// Emergency access when the bank IdP is down: everything, every request audited and alerted.
 	"break_glass": {
 		DashboardRead, IncidentRead, IncidentWrite, PolicyRead, ConfigRead, ConfigWrite, ComplianceRead, AuditRead,
-		AgentRead, AgentWrite, AgentApprove, AgentKillGlobal, IdentityRead, IdentityAdmin, BreakGlassAccess,
+		AgentRead, AgentWrite, AgentApprove, AgentKillGlobal, IdentityRead, IdentityAdmin, BreakGlassAccess, DataRemediate, DataApprove,
 	},
 }
 

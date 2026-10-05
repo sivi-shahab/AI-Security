@@ -190,8 +190,12 @@ func (c *Claude) ACL(context.Context, connector.Item) ([]connector.Grant, error)
 
 func (c *Claude) Labels(context.Context, connector.Item) ([]string, error) { return nil, nil }
 
-func (c *Claude) Remediate(context.Context, connector.Item, string) error {
-	return connector.ErrNotSupported
+func (c *Claude) Remediate(context.Context, connector.Item, connector.Action, bool) (connector.Change, error) {
+	return connector.Change{}, connector.ErrNotSupported
+}
+
+func (c *Claude) Undo(context.Context, connector.Item, json.RawMessage, bool) (connector.Change, error) {
+	return connector.Change{}, connector.ErrNotSupported
 }
 
 // --- ChatGPT Enterprise (Compliance Logs) ---
@@ -274,6 +278,10 @@ func (c *ChatGPT) ACL(context.Context, connector.Item) ([]connector.Grant, error
 
 func (c *ChatGPT) Labels(context.Context, connector.Item) ([]string, error) { return nil, nil }
 
-func (c *ChatGPT) Remediate(context.Context, connector.Item, string) error {
-	return connector.ErrNotSupported
+func (c *ChatGPT) Remediate(context.Context, connector.Item, connector.Action, bool) (connector.Change, error) {
+	return connector.Change{}, connector.ErrNotSupported
+}
+
+func (c *ChatGPT) Undo(context.Context, connector.Item, json.RawMessage, bool) (connector.Change, error) {
+	return connector.Change{}, connector.ErrNotSupported
 }

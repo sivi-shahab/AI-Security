@@ -19,7 +19,6 @@ import (
 	"aisec/internal/audit"
 	"aisec/internal/authz"
 	"aisec/internal/catalog"
-	"aisec/internal/datascan"
 	"aisec/internal/events"
 	"aisec/internal/identity"
 	"aisec/internal/incident"
@@ -28,6 +27,7 @@ import (
 	"aisec/internal/policysvc"
 	"aisec/internal/posture"
 	"aisec/internal/privacy"
+	"aisec/internal/remediate"
 	"aisec/internal/server"
 	"aisec/policy"
 )
@@ -102,7 +102,7 @@ func main() {
 	if err != nil {
 		fail("app catalog", err)
 	}
-	if err := datascan.Open(ctx, db); err != nil {
+	if err := remediate.Open(ctx, db); err != nil { // includes the data scan store
 		fail("data scan store", err)
 	}
 	registry, err := agents.Open(ctx, db, os.Getenv("TENANT_ID"), policies)
@@ -222,7 +222,7 @@ func main() {
 	routes(rt, deps{bundles: bundles, scim: ids.SCIMHandler(scimHash, os.Getenv("PUBLIC_URL")), metrics: metrics, mcpGateway: registry.GatewayHandler(mcpHash, time.Now), incidents: incidents, identity: ids,
 		policies: policies, simulator: simulator, apps: apps, feedKey: feedKey,
 		posture: posture.Sources{Search: search.Search, Apps: apps, Incidents: incidents, Policies: policies, Agents: registry},
-		agents:  registry, data: db})
+		agents:  registry, data: db, remediations: &remediate.Store{DB: db, Tenant: os.Getenv("TENANT_ID")}})
 	server.Run("control-plane", rt.Mux)
 	cancel()
 	kc.Close()

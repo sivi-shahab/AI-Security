@@ -3,7 +3,9 @@
 # non-root with read-only roots. Tika gets no egress and only the worker may reach it.
 # Secret connector-worker (out of band): DATABASE_URL, TENANT_PEPPER, LABELS, SCAN_INTERVAL, and the variables of
 # each source in use (cmd/connector-worker): M365_*, GDRIVE_ADMIN + GDRIVE_DOMAINS, S3_*, GCS_HMAC_*, AZURE_BLOB_*,
-# CLAUDE_COMPLIANCE_KEY, CHATGPT_COMPLIANCE_KEY + CHATGPT_WORKSPACE, EVENTS_TOKEN_SHA256.
+# CLAUDE_COMPLIANCE_KEY, CHATGPT_COMPLIANCE_KEY + CHATGPT_WORKSPACE, EVENTS_TOKEN_SHA256, TENANT_ID; remediation
+# write credentials (ticket 33), separate from the read-only scan ones: M365_REMEDIATE_CLIENT_ID/SECRET,
+# GDRIVE_REMEDIATE=true, S3_REMEDIATE_ACCESS_KEY/SECRET_KEY + S3_QUARANTINE_BUCKET.
 # Secret connector-worker-files (optional): gdrive-key.json (service account with domain-wide delegation).
 # Bucket notifications (MinIO/S3 webhook, GCS Pub/Sub push, Azure Event Grid) POST to
 # http(s)://<ingress>/events/{s3|gcs|azure}?token=… → Service connector-worker.

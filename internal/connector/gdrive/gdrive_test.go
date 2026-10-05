@@ -3,6 +3,7 @@ package gdrive
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -26,6 +27,8 @@ type fakeDrive struct {
 	subjects map[string]string // path prefix → subject last used
 	throttle int               // 403 rateLimitExceeded answers to give first
 	grants   []map[string]any
+	writes   []string
+	permSeq  int
 }
 
 type ffile struct {
@@ -33,6 +36,7 @@ type ffile struct {
 	data                     []byte
 	perms                    []map[string]any
 	modified                 time.Time
+	parents                  []string
 	removed                  bool
 	version                  int
 }
@@ -47,6 +51,15 @@ func (f *fakeDrive) change(id string, fn func(*ffile)) {
 		f.files[id] = fl
 	}
 	fn(fl)
+	for _, p := range fl.perms {
+		if p["id"] == nil {
+			f.permSeq++
+			p["id"] = fmt.Sprintf("p%d", f.permSeq)
+		}
+	}
+	if fl.parents == nil {
+		fl.parents = []string{"root"}
+	}
 	fl.version = f.version
 }
 
@@ -79,6 +92,54 @@ func (f *fakeDrive) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return m
 	}
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if r.Method != http.MethodGet {
+		f.writes = append(f.writes, subject+" "+r.Method+" "+r.URL.Path)
+		f.version++
+	}
+	switch {
+	case r.URL.Path == "/drive/v3/files" && strings.Contains(q.Get("q"), "AISec Quarantine"):
+		var out []any
+		for id, fl := range f.files {
+			if fl.name == "AISec Quarantine" && fl.mime == folderMime && !fl.removed {
+				out = append(out, map[string]any{"id": id})
+			}
+		}
+		js(map[string]any{"files": out})
+		return
+	case r.URL.Path == "/drive/v3/files" && r.Method == http.MethodPost:
+		var body struct {
+			Name     string   `json:"name"`
+			MimeType string   `json:"mimeType"`
+			Parents  []string `json:"parents"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		f.files["qfolder"] = &ffile{name: body.Name, mime: body.MimeType, parents: body.Parents, owner: subject, version: f.version}
+		js(map[string]any{"id": "qfolder"})
+		return
+	case len(parts) == 4 && parts[2] == "files" && r.Method == http.MethodPatch:
+		fl := f.files[parts[3]]
+		fl.parents = slices.DeleteFunc(fl.parents, func(p string) bool { return p == q.Get("removeParents") })
+		fl.parents = append(fl.parents, q.Get("addParents"))
+		fl.version = f.version
+		js(map[string]any{"id": parts[3]})
+		return
+	case len(parts) == 6 && parts[4] == "permissions" && r.Method == http.MethodDelete:
+		fl := f.files[parts[3]]
+		fl.perms = slices.DeleteFunc(fl.perms, func(p map[string]any) bool { return p["id"] == parts[5] })
+		fl.version = f.version
+		w.WriteHeader(http.StatusNoContent)
+		return
+	case len(parts) == 5 && parts[4] == "permissions" && r.Method == http.MethodPost:
+		var p map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&p)
+		f.permSeq++
+		p["id"] = fmt.Sprintf("p%d", f.permSeq)
+		fl := f.files[parts[3]]
+		fl.perms = append(fl.perms, p)
+		fl.version = f.version
+		js(p)
+		return
+	}
 	switch {
 	case r.URL.Path == "/drive/v3/drives":
 		js(map[string]any{"drives": []any{map[string]any{"id": "sd-1", "name": "Divisi Kredit"}}})
@@ -138,6 +199,8 @@ func (f *fakeDrive) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			_, _ = w.Write([]byte("export: " + string(fl.data)))
 		case len(parts) == 4 && q.Get("alt") == "media":
 			_, _ = w.Write(fl.data)
+		case len(parts) == 4 && q.Get("fields") == "parents":
+			js(map[string]any{"parents": fl.parents})
 		default:
 			w.WriteHeader(http.StatusBadRequest)
 		}
@@ -162,8 +225,9 @@ func setup(t *testing.T) (*fakeDrive, *Drive, *[]time.Duration) {
 	t.Cleanup(srv.Close)
 	var waits []time.Duration
 	d := &Drive{BaseURL: srv.URL, Admin: "scanner@bankmega.com", Domains: []string{"bankmega.com"},
-		Client:  func(subject string) *http.Client { return &http.Client{Transport: subjectRT{subject}} },
-		Backoff: connector.Backoff{Retries: 3, Base: time.Second, Max: time.Minute, Sleep: func(_ context.Context, d time.Duration) error { waits = append(waits, d); return nil }}}
+		Client:      func(subject string) *http.Client { return &http.Client{Transport: subjectRT{subject}} },
+		WriteClient: func(subject string) *http.Client { return &http.Client{Transport: subjectRT{"write:" + subject}} },
+		Backoff:     connector.Backoff{Retries: 3, Base: time.Second, Max: time.Minute, Sleep: func(_ context.Context, d time.Duration) error { waits = append(waits, d); return nil }}}
 	return f, d, &waits
 }
 
@@ -241,5 +305,63 @@ func TestOAuthGrants(t *testing.T) {
 	gs, err := d.OAuthGrants(context.Background(), time.Now().Add(-time.Hour))
 	if err != nil || len(gs) != 1 || gs[0].AppName != "ChatGPT" || gs[0].User != "ani@bankmega.com" || gs[0].Scopes[0] != "https://www.googleapis.com/auth/drive.readonly" {
 		t.Errorf("grants %+v %v", gs, err)
+	}
+}
+
+// Ticket 33: Drive remediation. Undo restores access exactly (re-created permissions, same file URL).
+func TestRemediation(t *testing.T) {
+	ctx := context.Background()
+	f, d, _ := setup(t)
+	f.change("doc", func(fl *ffile) {
+		fl.owner, fl.name, fl.mime, fl.data, fl.parents = "ani@bankmega.com", "Gaji.xlsx", "text/csv", []byte("x"), []string{"folder-hr"}
+		fl.perms = []map[string]any{
+			{"type": "user", "role": "owner", "emailAddress": "ani@bankmega.com"},
+			{"type": "anyone", "role": "reader"},
+			{"type": "domain", "role": "reader", "domain": "bankmega.com"},
+			{"type": "user", "role": "writer", "emailAddress": "partner@konsultan.co.id"},
+			{"type": "user", "role": "reader", "emailAddress": "kredit@bankmega.com", "permissionDetails": []any{map[string]any{"inherited": true}}},
+		}
+	})
+	it := connector.Item{ID: "doc", ContainerID: "user:ani@bankmega.com"}
+	perms := func() int { f.mu.Lock(); defer f.mu.Unlock(); return len(f.files["doc"].perms) }
+
+	plan, err := d.Remediate(ctx, it, connector.Action{Kind: connector.RemoveGrants, Grants: []string{"bankmega.com", "Partner@konsultan.co.id"}}, true)
+	if err != nil || len(plan.Steps) != 2 || len(f.writes) != 0 || perms() != 5 {
+		t.Fatalf("dry run: %+v %v %v", plan, err, f.writes)
+	}
+	done, err := d.Remediate(ctx, it, connector.Action{Kind: connector.RemoveGrants, Grants: []string{"bankmega.com", "Partner@konsultan.co.id"}}, false)
+	if err != nil || perms() != 3 || !strings.HasPrefix(f.writes[0], "write:ani@bankmega.com DELETE") {
+		t.Fatalf("execute: %+v %v; writes %v", done, err, f.writes)
+	}
+	if _, err := d.Undo(ctx, it, done.Undo, false); err != nil || perms() != 5 {
+		t.Errorf("undo: %v, %d perms", err, perms())
+	}
+	// Inherited grants are the folder's.
+	if _, err := d.Remediate(ctx, it, connector.Action{Kind: connector.RemoveGrants, Grants: []string{"kredit@bankmega.com"}}, true); err == nil {
+		t.Error("inherited grant removed at file level")
+	}
+	// Quarantine: moved into a new quarantine folder, everything but the owner (and inherited) stripped; undo.
+	f.writes = nil
+	plan, _ = d.Remediate(ctx, it, connector.Action{Kind: connector.Quarantine}, true)
+	if len(f.writes) != 0 || plan.Steps[0] != "move to /AISec Quarantine" {
+		t.Fatalf("quarantine dry run: %v %v", plan.Steps, f.writes)
+	}
+	done, err = d.Remediate(ctx, it, connector.Action{Kind: connector.Quarantine}, false)
+	f.mu.Lock()
+	parents := slices.Clone(f.files["doc"].parents)
+	f.mu.Unlock()
+	if err != nil || !slices.Equal(parents, []string{"qfolder"}) || perms() != 2 || !slices.Equal(done.Steps, plan.Steps) {
+		t.Fatalf("quarantine: %+v %v; parents %v, %d perms", done, err, parents, perms())
+	}
+	if _, err := d.Undo(ctx, it, done.Undo, false); err != nil || perms() != 5 {
+		t.Errorf("quarantine undo: %v", err)
+	}
+	f.mu.Lock()
+	if !slices.Equal(f.files["doc"].parents, []string{"folder-hr"}) {
+		t.Errorf("not moved back: %v", f.files["doc"].parents)
+	}
+	f.mu.Unlock()
+	if _, err := d.Remediate(ctx, it, connector.Action{Kind: connector.ApplyLabel, Label: "x"}, true); !errors.Is(err, connector.ErrNotSupported) {
+		t.Errorf("labels: %v", err)
 	}
 }

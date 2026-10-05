@@ -7,6 +7,7 @@ package objstore
 import (
 	"context"
 	_ "embed"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -57,6 +58,8 @@ type Store struct {
 	Buckets []string // only these buckets; empty = every bucket the credentials can list
 	// PolicyCache: how long a bucket's public/not-public answer is reused (0 = read it for every item).
 	PolicyCache time.Duration
+	// QuarantineBucket receives quarantined objects (ticket 33); "" = no quarantine. Keep it out of Buckets.
+	QuarantineBucket string
 
 	mu     sync.Mutex
 	public map[string]publicity
@@ -190,10 +193,6 @@ func (s *Store) ACL(ctx context.Context, it connector.Item) ([]connector.Grant, 
 
 func (s *Store) Labels(context.Context, connector.Item) ([]string, error) { return nil, nil }
 
-func (s *Store) Remediate(context.Context, connector.Item, string) error {
-	return connector.ErrNotSupported
-}
-
 func containsString(xs []string, x string) bool {
 	for _, v := range xs {
 		if v == x {
@@ -211,4 +210,48 @@ const EventRetention = 7 * 24 * time.Hour
 func PurgeEvents(ctx context.Context, db *pgxpool.Pool, now time.Time) (int64, error) {
 	tag, err := db.Exec(ctx, "DELETE FROM data.object_events WHERE at < $1", now.Add(-EventRetention))
 	return tag.RowsAffected(), err
+}
+
+// Mover is a backend that can move objects (remediation credentials).
+type Mover interface {
+	Move(ctx context.Context, srcBucket, srcKey, dstBucket, dstKey string) error
+}
+
+type quarantined struct {
+	Bucket string `json:"bucket"`
+	Key    string `json:"key"`
+}
+
+// Remediate: quarantine moves the object into QuarantineBucket (key "<bucket>/<key>"). Public access is a
+// bucket setting here, not a per-object link, so revoke/remove are not per-item actions; labels do not exist.
+func (s *Store) Remediate(ctx context.Context, it connector.Item, a connector.Action, dryRun bool) (connector.Change, error) {
+	m, ok := s.Backend.(Mover)
+	if a.Kind != connector.Quarantine || !ok || s.QuarantineBucket == "" {
+		return connector.Change{}, fmt.Errorf("%w: %s on %s object storage", connector.ErrNotSupported, a.Kind, s.Backend.Kind())
+	}
+	if it.ContainerID == s.QuarantineBucket {
+		return connector.Change{}, connector.ErrNothingToDo
+	}
+	dst := it.ContainerID + "/" + it.ID
+	ch := connector.Change{Steps: []string{fmt.Sprintf("move %s/%s to %s/%s", it.ContainerID, it.ID, s.QuarantineBucket, dst)}}
+	ch.Undo, _ = json.Marshal(quarantined{it.ContainerID, it.ID})
+	if dryRun {
+		return ch, nil
+	}
+	return ch, m.Move(ctx, it.ContainerID, it.ID, s.QuarantineBucket, dst)
+}
+
+// Undo moves a quarantined object back.
+func (s *Store) Undo(ctx context.Context, _ connector.Item, raw json.RawMessage, dryRun bool) (connector.Change, error) {
+	m, ok := s.Backend.(Mover)
+	var q quarantined
+	if !ok || s.QuarantineBucket == "" || json.Unmarshal(raw, &q) != nil || q.Bucket == "" {
+		return connector.Change{}, fmt.Errorf("%w: undo on %s object storage", connector.ErrNotSupported, s.Backend.Kind())
+	}
+	src := q.Bucket + "/" + q.Key
+	ch := connector.Change{Steps: []string{fmt.Sprintf("move %s/%s back to %s/%s", s.QuarantineBucket, src, q.Bucket, q.Key)}}
+	if dryRun {
+		return ch, nil
+	}
+	return ch, m.Move(ctx, s.QuarantineBucket, src, q.Bucket, q.Key)
 }

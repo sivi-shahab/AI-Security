@@ -418,3 +418,49 @@ func nullable(s string) *string {
 	}
 	return &s
 }
+
+// Refresh re-reads an asset's grants and label after a remediation and recomputes its flags and exposure. Path
+// and content tag stay as scanned (a moved item is reported by the feed); a new label can only raise sensitivity.
+func (s *Scanner) Refresh(ctx context.Context, assetID string) error {
+	var it connector.Item
+	var sens string
+	if err := s.DB.QueryRow(ctx, "SELECT external_id, container_id, content_tag, sensitivity FROM data.assets WHERE id = $1 AND source_id = $2",
+		assetID, s.Source).Scan(&it.ID, &it.ContainerID, &it.ContentTag, &sens); err != nil {
+		return err
+	}
+	acl, err := s.Conn.ACL(ctx, it)
+	if err != nil {
+		return fmt.Errorf("acl: %w", err)
+	}
+	ls, err := s.Conn.Labels(ctx, it)
+	if err != nil {
+		return fmt.Errorf("labels: %w", err)
+	}
+	var label *string
+	if len(ls) > 0 {
+		label = &ls[0]
+		if l := s.Labels[ls[0]]; rank(l) > rank(sens) {
+			sens = l
+		}
+	}
+	flags, err := s.flags(ctx, acl, sens)
+	if err != nil {
+		return err
+	}
+	return pgx.BeginFunc(ctx, s.DB, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, "UPDATE data.assets SET label = $2, sensitivity = $3, flags = $4, exposure_score = $5, scanned_at = $6 WHERE id = $1",
+			assetID, label, sens, flags, Exposure(sens, flags), s.Now()); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, "DELETE FROM data.acl_entries WHERE asset_id = $1", assetID); err != nil {
+			return err
+		}
+		for _, g := range acl {
+			if _, err := tx.Exec(ctx, "INSERT INTO data.acl_entries (asset_id, grantee_kind, grantee_ref, permission, external) VALUES ($1, $2, $3, $4, $5)",
+				assetID, g.Kind, g.Ref, g.Role, g.External); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}

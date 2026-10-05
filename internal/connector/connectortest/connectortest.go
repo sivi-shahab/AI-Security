@@ -190,8 +190,10 @@ func Run(t *testing.T, h Harness) {
 		if _, err := h.Conn.Labels(ctx, connector.Item{ID: a, ContainerID: c.ID}); err != nil {
 			t.Errorf("Labels: %v", err)
 		}
-		if err := h.Conn.Remediate(ctx, connector.Item{ID: a, ContainerID: c.ID}, "revoke_anyone_links"); err != nil && !errors.Is(err, connector.ErrNotSupported) {
-			t.Errorf("Remediate: %v", err)
+		item := connector.Item{ID: a, ContainerID: c.ID}
+		revoke := connector.Action{Kind: connector.RevokeAnyoneLinks}
+		if _, err := h.Conn.Remediate(ctx, item, revoke, true); err != nil && !errors.Is(err, connector.ErrNotSupported) && !errors.Is(err, connector.ErrNothingToDo) {
+			t.Errorf("Remediate on a private item: %v", err)
 		}
 		if h.Share == nil {
 			return
@@ -207,6 +209,43 @@ func Run(t *testing.T, h Harness) {
 			if it, ok := byID(items)[a]; !ok || it.ContentTag == "" {
 				t.Error("sharing change missing from the feed")
 			}
+		}
+		public := func() bool {
+			acl, err := h.Conn.ACL(ctx, item)
+			if err != nil {
+				t.Fatalf("ACL: %v", err)
+			}
+			return slices.ContainsFunc(acl, func(g connector.Grant) bool { return g.Kind == "anyone_link" })
+		}
+
+		// FR-DATA-6 (ticket 33): a dry run changes nothing and says what would happen; executing does exactly
+		// that; undo, when offered, restores it.
+		plan, err := h.Conn.Remediate(ctx, item, revoke, true)
+		if errors.Is(err, connector.ErrNotSupported) {
+			return
+		}
+		if err != nil || len(plan.Steps) == 0 || !public() {
+			t.Fatalf("dry run: %+v %v (still public: %v)", plan, err, public())
+		}
+		if again, _ := h.Conn.Remediate(ctx, item, revoke, true); !slices.Equal(again.Steps, plan.Steps) {
+			t.Errorf("same state, different plan: %v vs %v", again.Steps, plan.Steps)
+		}
+		done, err := h.Conn.Remediate(ctx, item, revoke, false)
+		if err != nil || !slices.Equal(done.Steps, plan.Steps) || public() {
+			t.Fatalf("execute: %+v %v (still public: %v; planned %v)", done, err, public(), plan.Steps)
+		}
+		if _, err := h.Conn.Remediate(ctx, item, revoke, true); !errors.Is(err, connector.ErrNothingToDo) {
+			t.Errorf("after execution: %v", err)
+		}
+		if done.Undo == nil {
+			return
+		}
+		undoPlan, err := h.Conn.Undo(ctx, item, done.Undo, true)
+		if err != nil || len(undoPlan.Steps) == 0 || public() {
+			t.Fatalf("undo dry run: %+v %v", undoPlan, err)
+		}
+		if _, err := h.Conn.Undo(ctx, item, done.Undo, false); err != nil || !public() {
+			t.Errorf("undo: %v (public again: %v)", err, public())
 		}
 	})
 }

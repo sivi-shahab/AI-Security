@@ -8,6 +8,7 @@ package connector
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 )
@@ -59,8 +60,38 @@ type Connector interface {
 	ACL(ctx context.Context, it Item) ([]Grant, error)
 	// Labels are the item's external sensitivity labels (Purview label ids; FR-CLS-6). nil when none.
 	Labels(ctx context.Context, it Item) ([]string, error)
-	Remediate(ctx context.Context, it Item, action string) error
+	// Remediate applies a (FR-DATA-6), or with dryRun only says what it would do. The returned Change lists the
+	// steps (the same steps for the same state, so a plan can be compared before executing) and, when the source
+	// can restore it, the data Undo needs.
+	Remediate(ctx context.Context, it Item, a Action, dryRun bool) (Change, error)
+	// Undo reverses a remediation from its Change.Undo; with dryRun only plans it.
+	Undo(ctx context.Context, it Item, undo json.RawMessage, dryRun bool) (Change, error)
 }
+
+// Remediation kinds.
+const (
+	RevokeAnyoneLinks = "revoke_anyone_links" // anonymous sharing links
+	RemoveGrants      = "remove_grants"       // the listed grantees (broad groups, external users or domains)
+	ApplyLabel        = "apply_label"         // an external sensitivity label
+	Quarantine        = "quarantine"          // move to a quarantine location and strip sharing
+)
+
+// Action is one remediation.
+type Action struct {
+	Kind   string   `json:"kind"`
+	Grants []string `json:"grants,omitempty"` // remove_grants: grantee refs as Grant.Ref reports them
+	Label  string   `json:"label,omitempty"`  // apply_label: external label id
+}
+
+// Change is what a remediation would do (dry run) or did. Undo is nil when the source cannot restore it
+// (e.g. a deleted anonymous link cannot come back with the same URL).
+type Change struct {
+	Steps []string        `json:"steps"`
+	Undo  json.RawMessage `json:"undo,omitempty"`
+}
+
+// ErrNothingToDo: the item already is as the action would leave it.
+var ErrNothingToDo = errors.New("nothing to remediate")
 
 // OAuthGrant is one user authorizing a third-party app on the bank's tenant (Google token audit, Entra consent):
 // the feed for AI apps that reach bank data through OAuth rather than the network (FR-AGT-1 shadow agents).

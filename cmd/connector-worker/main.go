@@ -23,6 +23,7 @@ import (
 	"aisec/internal/datascan"
 	"aisec/internal/extract"
 	"aisec/internal/privacy"
+	"aisec/internal/remediate"
 	"aisec/internal/server"
 )
 
@@ -39,6 +40,10 @@ import (
 //	claude   CLAUDE_COMPLIANCE_KEY (Compliance Access Key, read:compliance_user_data)
 //	chatgpt  CHATGPT_COMPLIANCE_KEY, CHATGPT_WORKSPACE
 //	events   EVENTS_TOKEN_SHA256 (hex): bucket notifications at POST /events/{s3|gcs|azure}
+//
+// Remediation (ticket 33) runs only for sources given write credentials, separate from the scanning ones:
+// M365_REMEDIATE_CLIENT_ID + M365_REMEDIATE_CLIENT_SECRET, GDRIVE_REMEDIATE=true (delegation also grants the
+// drive scope), S3_REMEDIATE_ACCESS_KEY + S3_REMEDIATE_SECRET_KEY + S3_QUARANTINE_BUCKET. TENANT_ID (audit log).
 func main() {
 	log := privacy.NewLogger("connector-worker")
 	fail := func(msg string, err error) {
@@ -55,7 +60,7 @@ func main() {
 		}
 		return out
 	}
-	for _, k := range []string{"DATABASE_URL", "TENANT_PEPPER"} {
+	for _, k := range []string{"DATABASE_URL", "TENANT_PEPPER", "TENANT_ID"} {
 		if env(k) == "" {
 			fail("config", errors.New(k+" is required"))
 		}
@@ -65,7 +70,7 @@ func main() {
 	if err != nil {
 		fail("database", err)
 	}
-	if err := datascan.Open(ctx, db); err != nil {
+	if err := remediate.Open(ctx, db); err != nil { // includes the data scan schema
 		fail("data schema", err)
 	}
 	if err := objstore.Open(ctx, db); err != nil {
@@ -89,22 +94,28 @@ func main() {
 	}
 	pepper := []byte(env("TENANT_PEPPER"))
 	var scanners []*datascan.Scanner
+	bySource := map[string]*datascan.Scanner{}
 	add := func(source string, c connector.Connector) {
 		s := &datascan.Scanner{DB: db, Source: source, Conn: c, Pepper: pepper, Labels: labels, Tika: tika, Log: log}
 		s.Defaults()
 		scanners = append(scanners, s)
+		bySource[source] = s
 	}
 	var audits []*datascan.OAuthAudit
 
 	if env("M365_TENANT_ID") != "" {
-		add("m365", m365.New(env("M365_TENANT_ID"), env("M365_CLIENT_ID"), env("M365_CLIENT_SECRET"), list("M365_DOMAINS")))
+		g := m365.New(env("M365_TENANT_ID"), env("M365_CLIENT_ID"), env("M365_CLIENT_SECRET"), list("M365_DOMAINS"))
+		if id := env("M365_REMEDIATE_CLIENT_ID"); id != "" {
+			g.Writer(env("M365_TENANT_ID"), id, env("M365_REMEDIATE_CLIENT_SECRET"))
+		}
+		add("m365", g)
 	}
 	if f := env("GDRIVE_KEY_FILE"); f != "" {
 		key, err := os.ReadFile(f)
 		if err != nil {
 			fail("GDRIVE_KEY_FILE", err)
 		}
-		d, err := gdrive.New(key, env("GDRIVE_ADMIN"), list("GDRIVE_DOMAINS"))
+		d, err := gdrive.New(key, env("GDRIVE_ADMIN"), list("GDRIVE_DOMAINS"), env("GDRIVE_REMEDIATE") == "true")
 		if err != nil {
 			fail("google drive", err)
 		}
@@ -117,7 +128,15 @@ func main() {
 		if err != nil {
 			fail(source, err)
 		}
-		add(source, &objstore.Store{Source: source, DB: db, Backend: objstore.NewS3(c, kind), Buckets: buckets, PolicyCache: time.Minute})
+		be := objstore.NewS3(c, kind)
+		st := &objstore.Store{Source: source, DB: db, Backend: be, Buckets: buckets, PolicyCache: time.Minute}
+		if source == "s3" && env("S3_REMEDIATE_ACCESS_KEY") != "" {
+			if be.Writer, err = minio.New(endpoint, &minio.Options{Creds: credentials.NewStaticV4(env("S3_REMEDIATE_ACCESS_KEY"), env("S3_REMEDIATE_SECRET_KEY"), ""), Secure: secure}); err != nil {
+				fail(source+" remediation", err)
+			}
+			st.QuarantineBucket = env("S3_QUARANTINE_BUCKET")
+		}
+		add(source, st)
 		formats[source] = kind
 	}
 	if ep := env("S3_ENDPOINT"); ep != "" {
@@ -150,6 +169,17 @@ func main() {
 		}
 		(&objstore.Receiver{DB: db, TokenSHA256: sum, Formats: formats, Now: time.Now}).Routes(mux)
 	}
+	// Remediation: plan new requests and execute approved ones every 30 s, independent of the scan interval.
+	ex := &remediate.Executor{DB: db, Tenant: env("TENANT_ID"), Scanners: bySource, Now: time.Now, Log: log}
+	go func() {
+		for t := time.NewTicker(30 * time.Second); ctx.Err() == nil; <-t.C {
+			if n, err := ex.Run(ctx); err != nil {
+				log.Error("remediation", "err", err)
+			} else if n > 0 {
+				log.Info("remediation", "handled", n)
+			}
+		}
+	}()
 	go func() {
 		for t := time.NewTicker(interval); ctx.Err() == nil; <-t.C {
 			for _, s := range scanners {

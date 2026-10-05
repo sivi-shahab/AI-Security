@@ -28,6 +28,17 @@ type Graph struct {
 	Domains []string     // the tenant's own e-mail domains: anything else is external
 	// Backoff handles Graph throttling (429/503/504): Retry-After honored, otherwise exponential.
 	Backoff connector.Backoff
+	// WriteHTTP carries a separate app registration with write permissions (Files.ReadWrite.All,
+	// Sites.ReadWrite.All, InformationProtectionPolicy for labels) used only by remediation; nil = none.
+	WriteHTTP *http.Client
+}
+
+// Writer sets the remediation app registration.
+func (g *Graph) Writer(tenant, clientID, secret string) {
+	cc := clientcredentials.Config{ClientID: clientID, ClientSecret: secret,
+		TokenURL: "https://login.microsoftonline.com/" + url.PathEscape(tenant) + "/oauth2/v2.0/token",
+		Scopes:   []string{"https://graph.microsoft.com/.default"}}
+	g.WriteHTTP = cc.Client(context.Background())
 }
 
 // New connects with an Entra ID app registration (client credentials).
@@ -311,9 +322,4 @@ func (g *Graph) Labels(ctx context.Context, it connector.Item) ([]string, error)
 		ids = append(ids, l.ID)
 	}
 	return ids, nil
-}
-
-// Remediate arrives with ticket 33.
-func (g *Graph) Remediate(context.Context, connector.Item, string) error {
-	return connector.ErrNotSupported
 }

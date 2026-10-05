@@ -14,6 +14,7 @@ import (
 	"aisec/internal/incident"
 	"aisec/internal/lifecycle"
 	"aisec/internal/posture"
+	"aisec/internal/remediate"
 )
 
 // deps are the handlers and stores routes need. Nil stores are fine for the route matrix test: it never calls a
@@ -30,6 +31,7 @@ type deps struct {
 	posture                posture.Sources
 	agents                 *agents.Store
 	data                   *pgxpool.Pool // data-at-rest findings (ticket 31)
+	remediations           *remediate.Store
 }
 
 // routes is the complete admin API. Everything not listed as Public needs a permission (deny by default);
@@ -51,4 +53,5 @@ func routes(rt *authz.Router, d deps) {
 	posture.Routes(rt, d.posture, time.Now)
 	agents.Routes(rt, d.agents, time.Now)
 	datascan.Routes(rt, d.data)
+	remediate.Routes(rt, d.remediations, time.Now)
 }
