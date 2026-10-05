@@ -1,0 +1,64 @@
+{
+ "id": "nist-ai-rmf",
+ "name": "NIST AI Risk Management Framework (AI 100-1)",
+ "version": "1.0",
+ "source": "https://airc.nist.gov/airmf-resources/airmf/5-sec-core/",
+ "requirements": [
+  {
+   "id": "GOVERN 1",
+   "title": "Policies, processes, procedures, and practices … are in place, transparent, and implemented effectively."
+  },
+  {
+   "id": "GOVERN 1.1",
+   "title": "Legal and regulatory requirements involving AI are understood, managed, and documented."
+  },
+  {
+   "id": "GOVERN 1.6",
+   "title": "Mechanisms are in place to inventory AI systems …"
+  },
+  {
+   "id": "GOVERN 3.2",
+   "title": "Policies and procedures … define and differentiate roles and responsibilities for human-AI configurations and oversight of AI systems."
+  },
+  {
+   "id": "MAP 1",
+   "title": "Context is established and understood."
+  },
+  {
+   "id": "MEASURE 2.7",
+   "title": "AI system security and resilience … are evaluated and documented."
+  },
+  {
+   "id": "MEASURE 2.8",
+   "title": "Risks associated with transparency and accountability … are examined and documented."
+  },
+  {
+   "id": "MEASURE 2.10",
+   "title": "Privacy risk of the AI system … is examined and documented."
+  },
+  {
+   "id": "MEASURE 3",
+   "title": "Mechanisms for tracking identified AI risks over time are in place."
+  },
+  {
+   "id": "MANAGE 2",
+   "title": "Strategies to maximize AI benefits and minimize negative impacts are planned, prepared, implemented, documented, and informed by input from relevant AI actors."
+  },
+  {
+   "id": "MANAGE 2.4",
+   "title": "Mechanisms are in place … to supersede, disengage, or deactivate AI systems …"
+  },
+  {
+   "id": "MANAGE 3",
+   "title": "AI risks and benefits from third-party entities are managed."
+  },
+  {
+   "id": "MANAGE 4.1",
+   "title": "Post-deployment AI system monitoring plans are implemented …"
+  },
+  {
+   "id": "MANAGE 4.3",
+   "title": "Incidents and errors are communicated to relevant AI actors … processes for tracking, responding to, and recovering from incidents … are followed and documented."
+  }
+ ]
+}

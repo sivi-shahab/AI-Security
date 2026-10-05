@@ -1,0 +1,36 @@
+{
+ "id": "pojk-11-2022",
+ "name": "POJK No. 11/POJK.03/2022 tentang Penyelenggaraan Teknologi Informasi oleh Bank Umum",
+ "version": "11/POJK.03/2022",
+ "source": "https://www.ojk.go.id (POJK 11/POJK.03/2022, PDF)",
+ "requirements": [
+  {
+   "id": "Pasal 16",
+   "title": "Bank wajib memastikan pengamanan informasi dilaksanakan secara efektif dan efisien"
+  },
+  {
+   "id": "Pasal 21",
+   "title": "Bank wajib menjaga ketahanan siber (identifikasi, pelindungan, deteksi insiden siber, respons dan pemulihan); rincian di SEOJK 29/SEOJK.03/2022"
+  },
+  {
+   "id": "Pasal 29-34",
+   "title": "Penggunaan pihak penyedia jasa TI"
+  },
+  {
+   "id": "Pasal 35-36",
+   "title": "Penempatan Sistem Elektronik pada Pusat Data dan Pusat Pemulihan Bencana di wilayah Indonesia; penempatan di luar dengan persetujuan OJK"
+  },
+  {
+   "id": "Pasal 54(2)",
+   "title": "Bank wajib memastikan ketersediaan jejak audit atas seluruh kegiatan penyelenggaraan TI"
+  },
+  {
+   "id": "Pasal 59",
+   "title": "Laporan kondisi TI tahunan (paling lambat 15 hari kerja setelah akhir tahun)"
+  },
+  {
+   "id": "Pasal 60",
+   "title": "Notifikasi awal insiden TI kepada OJK paling lama 24 jam; laporan insiden paling lama 5 hari kerja"
+  }
+ ]
+}

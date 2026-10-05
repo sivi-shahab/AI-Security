@@ -1,0 +1,45 @@
+{
+ "id": "owasp-asi",
+ "name": "OWASP Top 10 for Agentic Applications",
+ "version": "2026",
+ "source": "https://genai.owasp.org/ (OWASP Top 10 for Agentic Applications for 2026, released 2025-12-09; PDF gated)",
+ "requirements": [
+  {
+   "id": "ASI01",
+   "title": "Agent Goal Hijack"
+  },
+  {
+   "id": "ASI02",
+   "title": "Tool Misuse and Exploitation"
+  },
+  {
+   "id": "ASI03",
+   "title": "Identity and Privilege Abuse"
+  },
+  {
+   "id": "ASI04",
+   "title": "Agentic Supply Chain Vulnerabilities"
+  },
+  {
+   "id": "ASI06",
+   "title": "Memory & Context Poisoning"
+  },
+  {
+   "id": "ASI07",
+   "title": "Insecure Inter-Agent Communication"
+  },
+  {
+   "id": "ASI08",
+   "title": "Cascading Failures"
+  },
+  {
+   "id": "ASI09",
+   "title": "Human-Agent Trust Exploitation"
+  },
+  {
+   "id": "ASI10",
+   "title": "Rogue Agents"
+  }
+ ],
+ "note": "ASI titles from secondary sources: confirm against the official (gated) PDF before relying on them."
+}

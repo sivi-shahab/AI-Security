@@ -1,0 +1,32 @@
+{
+ "id": "uu-pdp",
+ "name": "UU No. 27 Tahun 2022 tentang Pelindungan Data Pribadi",
+ "version": "27/2022",
+ "source": "https://peraturan.bpk.go.id/Download/224884",
+ "requirements": [
+  {
+   "id": "Pasal 35",
+   "title": "Pengendali wajib melindungi dan memastikan keamanan Data Pribadi"
+  },
+  {
+   "id": "Pasal 36",
+   "title": "Kerahasiaan Data Pribadi"
+  },
+  {
+   "id": "Pasal 38",
+   "title": "Melindungi dari pemrosesan yang tidak sah"
+  },
+  {
+   "id": "Pasal 39",
+   "title": "Mencegah Data Pribadi diakses secara tidak sah"
+  },
+  {
+   "id": "Pasal 46",
+   "title": "Pemberitahuan kegagalan pelindungan paling lambat 3 x 24 jam kepada Subjek Data Pribadi dan lembaga"
+  },
+  {
+   "id": "Pasal 56",
+   "title": "Transfer Data Pribadi ke luar wilayah hukum Indonesia (pelindungan setara atau lebih tinggi)"
+  }
+ ]
+}

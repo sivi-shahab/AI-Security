@@ -1,0 +1,48 @@
+{
+ "id": "owasp-llm",
+ "name": "OWASP Top 10 for LLM Applications",
+ "version": "2025",
+ "source": "https://genai.owasp.org/llm-top-10/",
+ "requirements": [
+  {
+   "id": "LLM01",
+   "title": "Prompt Injection"
+  },
+  {
+   "id": "LLM02",
+   "title": "Sensitive Information Disclosure"
+  },
+  {
+   "id": "LLM03",
+   "title": "Supply Chain"
+  },
+  {
+   "id": "LLM04",
+   "title": "Data and Model Poisoning"
+  },
+  {
+   "id": "LLM05",
+   "title": "Improper Output Handling"
+  },
+  {
+   "id": "LLM06",
+   "title": "Excessive Agency"
+  },
+  {
+   "id": "LLM07",
+   "title": "System Prompt Leakage"
+  },
+  {
+   "id": "LLM08",
+   "title": "Vector and Embedding Weaknesses"
+  },
+  {
+   "id": "LLM09",
+   "title": "Misinformation"
+  },
+  {
+   "id": "LLM10",
+   "title": "Unbounded Consumption"
+  }
+ ]
+}

@@ -9,6 +9,7 @@ import (
 	"aisec/internal/agents"
 	"aisec/internal/authz"
 	"aisec/internal/catalog"
+	"aisec/internal/compliance"
 	"aisec/internal/datascan"
 	"aisec/internal/identity"
 	"aisec/internal/incident"
@@ -32,6 +33,9 @@ type deps struct {
 	agents                 *agents.Store
 	data                   *pgxpool.Pool // data-at-rest findings (ticket 31)
 	remediations           *remediate.Store
+	compliance             *compliance.Store
+	complianceSources      compliance.Sources
+	register               compliance.RegisterSources
 }
 
 // routes is the complete admin API. Everything not listed as Public needs a permission (deny by default);
@@ -54,4 +58,5 @@ func routes(rt *authz.Router, d deps) {
 	agents.Routes(rt, d.agents, time.Now)
 	datascan.Routes(rt, d.data)
 	remediate.Routes(rt, d.remediations, time.Now)
+	compliance.Routes(rt, d.compliance, d.complianceSources, d.register, time.Now)
 }

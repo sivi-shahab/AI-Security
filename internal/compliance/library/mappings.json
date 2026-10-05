@@ -1,0 +1,753 @@
+{
+ "note": "Spec §14 mapping after desk research against official texts on 2026-10-05 (ticket 34). Research is not a sign-off: the compliance team verifies each mapping (POST /compliance/mappings/verify).",
+ "mappings": [
+  {
+   "control": "CTL-INVENTORY",
+   "framework": "owasp-llm",
+   "framework_version": "2025",
+   "requirement": "LLM03",
+   "research": {
+    "verdict": "weak",
+    "source": "https://genai.owasp.org/llm-top-10/",
+    "note": "Supply Chain: holds for third-party models/SaaS; shadow AI is mainly a governance gap."
+   }
+  },
+  {
+   "control": "CTL-INVENTORY",
+   "framework": "nist-ai-rmf",
+   "framework_version": "1.0",
+   "requirement": "GOVERN 1.6",
+   "research": {
+    "verdict": "supported",
+    "source": "https://airc.nist.gov/airmf-resources/airmf/5-sec-core/",
+    "note": ""
+   }
+  },
+  {
+   "control": "CTL-INVENTORY",
+   "framework": "nist-ai-rmf",
+   "framework_version": "1.0",
+   "requirement": "MAP 1",
+   "research": {
+    "verdict": "weak",
+    "source": "https://airc.nist.gov/airmf-resources/airmf/5-sec-core/",
+    "note": "Generic; a specific subcategory (MAP 1.1) would be tighter."
+   }
+  },
+  {
+   "control": "CTL-INVENTORY",
+   "framework": "iso-42001",
+   "framework_version": "2023",
+   "requirement": "A.4",
+   "research": {
+    "verdict": "unverifiable",
+    "source": "https://www.iso.org/standard/81230.html (licensed; not verifiable from free sources)",
+    "note": "Confirm against a licensed copy of ISO/IEC 42001."
+   }
+  },
+  {
+   "control": "CTL-INVENTORY",
+   "framework": "iso-42001",
+   "framework_version": "2023",
+   "requirement": "A.6",
+   "research": {
+    "verdict": "unverifiable",
+    "source": "https://www.iso.org/standard/81230.html (licensed; not verifiable from free sources)",
+    "note": "Confirm against a licensed copy of ISO/IEC 42001."
+   }
+  },
+  {
+   "control": "CTL-INVENTORY",
+   "framework": "iso-42001",
+   "framework_version": "2023",
+   "requirement": "A.10",
+   "research": {
+    "verdict": "unverifiable",
+    "source": "https://www.iso.org/standard/81230.html (licensed; not verifiable from free sources)",
+    "note": "Confirm against a licensed copy of ISO/IEC 42001."
+   }
+  },
+  {
+   "control": "CTL-INVENTORY",
+   "framework": "ojk-ai-guide",
+   "framework_version": "2025",
+   "requirement": "Bab 6 Inventaris",
+   "research": {
+    "verdict": "supported",
+    "source": "https://www.ojk.go.id (Tata Kelola Kecerdasan Artifisial Perbankan Indonesia, PDF, 2025-04-29)",
+    "note": "The guide speaks of a model inventory."
+   }
+  },
+  {
+   "control": "CTL-INVENTORY",
+   "framework": "ojk-ai-guide",
+   "framework_version": "2025",
+   "requirement": "Bab 4 Akuntabilitas",
+   "research": {
+    "verdict": "supported",
+    "source": "https://www.ojk.go.id (Tata Kelola Kecerdasan Artifisial Perbankan Indonesia, PDF, 2025-04-29)",
+    "note": ""
+   }
+  },
+  {
+   "control": "CTL-DLP",
+   "framework": "owasp-llm",
+   "framework_version": "2025",
+   "requirement": "LLM02",
+   "research": {
+    "verdict": "supported",
+    "source": "https://genai.owasp.org/llm-top-10/",
+    "note": ""
+   }
+  },
+  {
+   "control": "CTL-DLP",
+   "framework": "owasp-llm",
+   "framework_version": "2025",
+   "requirement": "LLM05",
+   "research": {
+    "verdict": "weak",
+    "source": "https://genai.owasp.org/llm-top-10/",
+    "note": "Improper Output Handling is unsafe downstream use of output; holds only for response inspection."
+   }
+  },
+  {
+   "control": "CTL-DLP",
+   "framework": "nist-ai-rmf",
+   "framework_version": "1.0",
+   "requirement": "MEASURE 2.10",
+   "research": {
+    "verdict": "supported",
+    "source": "https://airc.nist.gov/airmf-resources/airmf/5-sec-core/",
+    "note": ""
+   }
+  },
+  {
+   "control": "CTL-DLP",
+   "framework": "nist-ai-rmf",
+   "framework_version": "1.0",
+   "requirement": "MANAGE 2",
+   "research": {
+    "verdict": "weak",
+    "source": "https://airc.nist.gov/airmf-resources/airmf/5-sec-core/",
+    "note": "Generic category."
+   }
+  },
+  {
+   "control": "CTL-DLP",
+   "framework": "iso-42001",
+   "framework_version": "2023",
+   "requirement": "A.7",
+   "research": {
+    "verdict": "unverifiable",
+    "source": "https://www.iso.org/standard/81230.html (licensed; not verifiable from free sources)",
+    "note": "Confirm against a licensed copy of ISO/IEC 42001."
+   }
+  },
+  {
+   "control": "CTL-DLP",
+   "framework": "iso-42001",
+   "framework_version": "2023",
+   "requirement": "A.9",
+   "research": {
+    "verdict": "unverifiable",
+    "source": "https://www.iso.org/standard/81230.html (licensed; not verifiable from free sources)",
+    "note": "Confirm against a licensed copy of ISO/IEC 42001."
+   }
+  },
+  {
+   "control": "CTL-DLP",
+   "framework": "uu-pdp",
+   "framework_version": "27/2022",
+   "requirement": "Pasal 35",
+   "research": {
+    "verdict": "supported",
+    "source": "https://peraturan.bpk.go.id/Download/224884",
+    "note": ""
+   }
+  },
+  {
+   "control": "CTL-DLP",
+   "framework": "uu-pdp",
+   "framework_version": "27/2022",
+   "requirement": "Pasal 36",
+   "research": {
+    "verdict": "supported",
+    "source": "https://peraturan.bpk.go.id/Download/224884",
+    "note": ""
+   }
+  },
+  {
+   "control": "CTL-DLP",
+   "framework": "uu-pdp",
+   "framework_version": "27/2022",
+   "requirement": "Pasal 38",
+   "research": {
+    "verdict": "supported",
+    "source": "https://peraturan.bpk.go.id/Download/224884",
+    "note": ""
+   }
+  },
+  {
+   "control": "CTL-DLP",
+   "framework": "uu-pdp",
+   "framework_version": "27/2022",
+   "requirement": "Pasal 39",
+   "research": {
+    "verdict": "supported",
+    "source": "https://peraturan.bpk.go.id/Download/224884",
+    "note": ""
+   }
+  },
+  {
+   "control": "CTL-DLP",
+   "framework": "pojk-11-2022",
+   "framework_version": "11/POJK.03/2022",
+   "requirement": "Pasal 16",
+   "research": {
+    "verdict": "supported",
+    "source": "https://www.ojk.go.id (POJK 11/POJK.03/2022, PDF)",
+    "note": ""
+   }
+  },
+  {
+   "control": "CTL-INJECTION",
+   "framework": "owasp-llm",
+   "framework_version": "2025",
+   "requirement": "LLM01",
+   "research": {
+    "verdict": "supported",
+    "source": "https://genai.owasp.org/llm-top-10/",
+    "note": ""
+   }
+  },
+  {
+   "control": "CTL-INJECTION",
+   "framework": "owasp-llm",
+   "framework_version": "2025",
+   "requirement": "LLM07",
+   "research": {
+    "verdict": "supported",
+    "source": "https://genai.owasp.org/llm-top-10/",
+    "note": ""
+   }
+  },
+  {
+   "control": "CTL-INJECTION",
+   "framework": "owasp-asi",
+   "framework_version": "2026",
+   "requirement": "ASI01",
+   "research": {
+    "verdict": "supported",
+    "source": "https://genai.owasp.org/ (OWASP Top 10 for Agentic Applications for 2026, released 2025-12-09; PDF gated)",
+    "note": "Title only (secondary source)."
+   }
+  },
+  {
+   "control": "CTL-INJECTION",
+   "framework": "owasp-asi",
+   "framework_version": "2026",
+   "requirement": "ASI06",
+   "research": {
+    "verdict": "supported",
+    "source": "https://genai.owasp.org/ (OWASP Top 10 for Agentic Applications for 2026, released 2025-12-09; PDF gated)",
+    "note": "Title only (secondary source)."
+   }
+  },
+  {
+   "control": "CTL-INJECTION",
+   "framework": "nist-ai-rmf",
+   "framework_version": "1.0",
+   "requirement": "MEASURE 2.7",
+   "research": {
+    "verdict": "supported",
+    "source": "https://airc.nist.gov/airmf-resources/airmf/5-sec-core/",
+    "note": ""
+   }
+  },
+  {
+   "control": "CTL-INJECTION",
+   "framework": "iso-42001",
+   "framework_version": "2023",
+   "requirement": "A.6.2",
+   "research": {
+    "verdict": "unverifiable",
+    "source": "https://www.iso.org/standard/81230.html (licensed; not verifiable from free sources)",
+    "note": "Confirm against a licensed copy of ISO/IEC 42001."
+   }
+  },
+  {
+   "control": "CTL-INJECTION",
+   "framework": "pojk-11-2022",
+   "framework_version": "11/POJK.03/2022",
+   "requirement": "Pasal 21",
+   "research": {
+    "verdict": "supported",
+    "source": "https://www.ojk.go.id (POJK 11/POJK.03/2022, PDF)",
+    "note": "SEOJK 29/SEOJK.03/2022 not fetched."
+   }
+  },
+  {
+   "control": "CTL-AGENT",
+   "framework": "owasp-llm",
+   "framework_version": "2025",
+   "requirement": "LLM06",
+   "research": {
+    "verdict": "supported",
+    "source": "https://genai.owasp.org/llm-top-10/",
+    "note": ""
+   }
+  },
+  {
+   "control": "CTL-AGENT",
+   "framework": "owasp-asi",
+   "framework_version": "2026",
+   "requirement": "ASI02",
+   "research": {
+    "verdict": "supported",
+    "source": "https://genai.owasp.org/ (OWASP Top 10 for Agentic Applications for 2026, released 2025-12-09; PDF gated)",
+    "note": "Title only (secondary source)."
+   }
+  },
+  {
+   "control": "CTL-AGENT",
+   "framework": "owasp-asi",
+   "framework_version": "2026",
+   "requirement": "ASI03",
+   "research": {
+    "verdict": "supported",
+    "source": "https://genai.owasp.org/ (OWASP Top 10 for Agentic Applications for 2026, released 2025-12-09; PDF gated)",
+    "note": "Title only (secondary source)."
+   }
+  },
+  {
+   "control": "CTL-AGENT",
+   "framework": "owasp-asi",
+   "framework_version": "2026",
+   "requirement": "ASI10",
+   "research": {
+    "verdict": "supported",
+    "source": "https://genai.owasp.org/ (OWASP Top 10 for Agentic Applications for 2026, released 2025-12-09; PDF gated)",
+    "note": "Title only (secondary source)."
+   }
+  },
+  {
+   "control": "CTL-AGENT",
+   "framework": "owasp-asi",
+   "framework_version": "2026",
+   "requirement": "ASI08",
+   "research": {
+    "verdict": "weak",
+    "source": "https://genai.owasp.org/ (OWASP Top 10 for Agentic Applications for 2026, released 2025-12-09; PDF gated)",
+    "note": "Cascading Failures: defensible for the kill switch only."
+   }
+  },
+  {
+   "control": "CTL-AGENT",
+   "framework": "owasp-asi",
+   "framework_version": "2026",
+   "requirement": "ASI09",
+   "research": {
+    "verdict": "weak",
+    "source": "https://genai.owasp.org/ (OWASP Top 10 for Agentic Applications for 2026, released 2025-12-09; PDF gated)",
+    "note": "Human-Agent Trust Exploitation targets the approver; holds only if HITL counters approval fatigue/manipulation."
+   }
+  },
+  {
+   "control": "CTL-AGENT",
+   "framework": "nist-ai-rmf",
+   "framework_version": "1.0",
+   "requirement": "GOVERN 3.2",
+   "research": {
+    "verdict": "supported",
+    "source": "https://airc.nist.gov/airmf-resources/airmf/5-sec-core/",
+    "note": ""
+   }
+  },
+  {
+   "control": "CTL-AGENT",
+   "framework": "nist-ai-rmf",
+   "framework_version": "1.0",
+   "requirement": "MANAGE 2.4",
+   "research": {
+    "verdict": "supported",
+    "source": "https://airc.nist.gov/airmf-resources/airmf/5-sec-core/",
+    "note": ""
+   }
+  },
+  {
+   "control": "CTL-AGENT",
+   "framework": "iso-42001",
+   "framework_version": "2023",
+   "requirement": "A.9",
+   "research": {
+    "verdict": "unverifiable",
+    "source": "https://www.iso.org/standard/81230.html (licensed; not verifiable from free sources)",
+    "note": "Confirm against a licensed copy of ISO/IEC 42001."
+   }
+  },
+  {
+   "control": "CTL-AGENT",
+   "framework": "iso-42001",
+   "framework_version": "2023",
+   "requirement": "A.6",
+   "research": {
+    "verdict": "unverifiable",
+    "source": "https://www.iso.org/standard/81230.html (licensed; not verifiable from free sources)",
+    "note": "Confirm against a licensed copy of ISO/IEC 42001."
+   }
+  },
+  {
+   "control": "CTL-AGENT",
+   "framework": "ojk-ai-guide",
+   "framework_version": "2025",
+   "requirement": "Bab 4 Pengawasan Manusia",
+   "research": {
+    "verdict": "supported",
+    "source": "https://www.ojk.go.id (Tata Kelola Kecerdasan Artifisial Perbankan Indonesia, PDF, 2025-04-29)",
+    "note": "\"Kill switch\" is not named in the guide."
+   }
+  },
+  {
+   "control": "CTL-MCP",
+   "framework": "owasp-asi",
+   "framework_version": "2026",
+   "requirement": "ASI04",
+   "research": {
+    "verdict": "supported",
+    "source": "https://genai.owasp.org/ (OWASP Top 10 for Agentic Applications for 2026, released 2025-12-09; PDF gated)",
+    "note": "Title only (secondary source)."
+   }
+  },
+  {
+   "control": "CTL-MCP",
+   "framework": "owasp-asi",
+   "framework_version": "2026",
+   "requirement": "ASI02",
+   "research": {
+    "verdict": "supported",
+    "source": "https://genai.owasp.org/ (OWASP Top 10 for Agentic Applications for 2026, released 2025-12-09; PDF gated)",
+    "note": "Replaces ASI07 of spec §14 (MCP is agent-to-tool, not inter-agent)."
+   }
+  },
+  {
+   "control": "CTL-MCP",
+   "framework": "owasp-llm",
+   "framework_version": "2025",
+   "requirement": "LLM03",
+   "research": {
+    "verdict": "supported",
+    "source": "https://genai.owasp.org/llm-top-10/",
+    "note": ""
+   }
+  },
+  {
+   "control": "CTL-MCP",
+   "framework": "nist-ai-rmf",
+   "framework_version": "1.0",
+   "requirement": "MANAGE 3",
+   "research": {
+    "verdict": "supported",
+    "source": "https://airc.nist.gov/airmf-resources/airmf/5-sec-core/",
+    "note": ""
+   }
+  },
+  {
+   "control": "CTL-MCP",
+   "framework": "iso-42001",
+   "framework_version": "2023",
+   "requirement": "A.10",
+   "research": {
+    "verdict": "unverifiable",
+    "source": "https://www.iso.org/standard/81230.html (licensed; not verifiable from free sources)",
+    "note": "Confirm against a licensed copy of ISO/IEC 42001."
+   }
+  },
+  {
+   "control": "CTL-MCP",
+   "framework": "pojk-11-2022",
+   "framework_version": "11/POJK.03/2022",
+   "requirement": "Pasal 29-34",
+   "research": {
+    "verdict": "supported",
+    "source": "https://www.ojk.go.id (POJK 11/POJK.03/2022, PDF)",
+    "note": ""
+   }
+  },
+  {
+   "control": "CTL-RATE",
+   "framework": "owasp-llm",
+   "framework_version": "2025",
+   "requirement": "LLM10",
+   "research": {
+    "verdict": "supported",
+    "source": "https://genai.owasp.org/llm-top-10/",
+    "note": ""
+   }
+  },
+  {
+   "control": "CTL-RATE",
+   "framework": "nist-ai-rmf",
+   "framework_version": "1.0",
+   "requirement": "MANAGE 2",
+   "research": {
+    "verdict": "weak",
+    "source": "https://airc.nist.gov/airmf-resources/airmf/5-sec-core/",
+    "note": "Generic; MEASURE 2.7 (resilience) is an alternative."
+   }
+  },
+  {
+   "control": "CTL-RATE",
+   "framework": "iso-42001",
+   "framework_version": "2023",
+   "requirement": "A.6",
+   "research": {
+    "verdict": "unverifiable",
+    "source": "https://www.iso.org/standard/81230.html (licensed; not verifiable from free sources)",
+    "note": "Confirm against a licensed copy of ISO/IEC 42001."
+   }
+  },
+  {
+   "control": "CTL-RESIDENCY",
+   "framework": "nist-ai-rmf",
+   "framework_version": "1.0",
+   "requirement": "GOVERN 1.1",
+   "research": {
+    "verdict": "supported",
+    "source": "https://airc.nist.gov/airmf-resources/airmf/5-sec-core/",
+    "note": "Replaces GOVERN 6 of spec §14 (third-party supply chain, weak)."
+   }
+  },
+  {
+   "control": "CTL-RESIDENCY",
+   "framework": "pojk-11-2022",
+   "framework_version": "11/POJK.03/2022",
+   "requirement": "Pasal 35-36",
+   "research": {
+    "verdict": "supported",
+    "source": "https://www.ojk.go.id (POJK 11/POJK.03/2022, PDF)",
+    "note": ""
+   }
+  },
+  {
+   "control": "CTL-RESIDENCY",
+   "framework": "uu-pdp",
+   "framework_version": "27/2022",
+   "requirement": "Pasal 56",
+   "research": {
+    "verdict": "supported",
+    "source": "https://peraturan.bpk.go.id/Download/224884",
+    "note": ""
+   }
+  },
+  {
+   "control": "CTL-RESIDENCY",
+   "framework": "pp-33-2026",
+   "framework_version": "33/2026",
+   "requirement": "Transfer",
+   "research": {
+    "verdict": "weak",
+    "source": "PP 33/2026 (government-hosted copy; JDIH Setneg not checked)",
+    "note": "Pasal not yet identified in PP 33/2026."
+   }
+  },
+  {
+   "control": "CTL-RESIDENCY",
+   "framework": "iso-42001",
+   "framework_version": "2023",
+   "requirement": "A.10",
+   "research": {
+    "verdict": "unverifiable",
+    "source": "https://www.iso.org/standard/81230.html (licensed; not verifiable from free sources)",
+    "note": "Confirm against a licensed copy of ISO/IEC 42001."
+   }
+  },
+  {
+   "control": "CTL-INCIDENT",
+   "framework": "nist-ai-rmf",
+   "framework_version": "1.0",
+   "requirement": "MANAGE 4.3",
+   "research": {
+    "verdict": "supported",
+    "source": "https://airc.nist.gov/airmf-resources/airmf/5-sec-core/",
+    "note": "Spec §14 cited MANAGE 4; 4.3 is the precise subcategory."
+   }
+  },
+  {
+   "control": "CTL-INCIDENT",
+   "framework": "uu-pdp",
+   "framework_version": "27/2022",
+   "requirement": "Pasal 46",
+   "research": {
+    "verdict": "supported",
+    "source": "https://peraturan.bpk.go.id/Download/224884",
+    "note": ""
+   }
+  },
+  {
+   "control": "CTL-INCIDENT",
+   "framework": "pojk-11-2022",
+   "framework_version": "11/POJK.03/2022",
+   "requirement": "Pasal 60",
+   "research": {
+    "verdict": "supported",
+    "source": "https://www.ojk.go.id (POJK 11/POJK.03/2022, PDF)",
+    "note": "Missing from spec §14: 24 h initial notice to OJK, shorter than UU PDP 3x24 h."
+   }
+  },
+  {
+   "control": "CTL-INCIDENT",
+   "framework": "iso-42001",
+   "framework_version": "2023",
+   "requirement": "A.6.2.8",
+   "research": {
+    "verdict": "unverifiable",
+    "source": "https://www.iso.org/standard/81230.html (licensed; not verifiable from free sources)",
+    "note": "Confirm against a licensed copy of ISO/IEC 42001."
+   }
+  },
+  {
+   "control": "CTL-AUDIT",
+   "framework": "nist-ai-rmf",
+   "framework_version": "1.0",
+   "requirement": "MEASURE 2.8",
+   "research": {
+    "verdict": "weak",
+    "source": "https://airc.nist.gov/airmf-resources/airmf/5-sec-core/",
+    "note": "Replaces GOVERN 4 (wrong: culture). Official text of 2.8 not quoted in the research."
+   }
+  },
+  {
+   "control": "CTL-AUDIT",
+   "framework": "nist-ai-rmf",
+   "framework_version": "1.0",
+   "requirement": "MANAGE 4.1",
+   "research": {
+    "verdict": "weak",
+    "source": "https://airc.nist.gov/airmf-resources/airmf/5-sec-core/",
+    "note": "Replaces MEASURE 4 (wrong: feedback on measurement efficacy). Official text not quoted in the research."
+   }
+  },
+  {
+   "control": "CTL-AUDIT",
+   "framework": "pojk-11-2022",
+   "framework_version": "11/POJK.03/2022",
+   "requirement": "Pasal 54(2)",
+   "research": {
+    "verdict": "supported",
+    "source": "https://www.ojk.go.id (POJK 11/POJK.03/2022, PDF)",
+    "note": ""
+   }
+  },
+  {
+   "control": "CTL-AUDIT",
+   "framework": "iso-42001",
+   "framework_version": "2023",
+   "requirement": "A.6.2.8",
+   "research": {
+    "verdict": "unverifiable",
+    "source": "https://www.iso.org/standard/81230.html (licensed; not verifiable from free sources)",
+    "note": "Confirm against a licensed copy of ISO/IEC 42001."
+   }
+  },
+  {
+   "control": "CTL-AUDIT",
+   "framework": "ojk-ai-guide",
+   "framework_version": "2025",
+   "requirement": "Bab 6 Inventaris",
+   "research": {
+    "verdict": "supported",
+    "source": "https://www.ojk.go.id (Tata Kelola Kecerdasan Artifisial Perbankan Indonesia, PDF, 2025-04-29)",
+    "note": "Audit trail."
+   }
+  },
+  {
+   "control": "CTL-POSTURE",
+   "framework": "nist-ai-rmf",
+   "framework_version": "1.0",
+   "requirement": "GOVERN 1",
+   "research": {
+    "verdict": "supported",
+    "source": "https://airc.nist.gov/airmf-resources/airmf/5-sec-core/",
+    "note": "GOVERN 1.5 (ongoing monitoring, periodic review) is the tighter subcategory."
+   }
+  },
+  {
+   "control": "CTL-POSTURE",
+   "framework": "nist-ai-rmf",
+   "framework_version": "1.0",
+   "requirement": "MEASURE 3",
+   "research": {
+    "verdict": "supported",
+    "source": "https://airc.nist.gov/airmf-resources/airmf/5-sec-core/",
+    "note": ""
+   }
+  },
+  {
+   "control": "CTL-POSTURE",
+   "framework": "iso-42001",
+   "framework_version": "2023",
+   "requirement": "Clause 9",
+   "research": {
+    "verdict": "unverifiable",
+    "source": "https://www.iso.org/standard/81230.html (licensed; not verifiable from free sources)",
+    "note": "Confirm against a licensed copy of ISO/IEC 42001."
+   }
+  },
+  {
+   "control": "CTL-POSTURE",
+   "framework": "pojk-11-2022",
+   "framework_version": "11/POJK.03/2022",
+   "requirement": "Pasal 59",
+   "research": {
+    "verdict": "weak",
+    "source": "https://www.ojk.go.id (POJK 11/POJK.03/2022, PDF)",
+    "note": "Annual IT condition report: the posture history feeds it; replaces the vague \"OJK audit\" of spec §14."
+   }
+  },
+  {
+   "control": "CTL-DATA",
+   "framework": "uu-pdp",
+   "framework_version": "27/2022",
+   "requirement": "Pasal 35",
+   "research": {
+    "verdict": "weak",
+    "source": "https://peraturan.bpk.go.id/Download/224884",
+    "note": "Proposed (not in spec §14): data-at-rest oversharing as personal-data security."
+   }
+  },
+  {
+   "control": "CTL-DATA",
+   "framework": "uu-pdp",
+   "framework_version": "27/2022",
+   "requirement": "Pasal 39",
+   "research": {
+    "verdict": "weak",
+    "source": "https://peraturan.bpk.go.id/Download/224884",
+    "note": "Proposed (not in spec §14): data-at-rest oversharing as personal-data security."
+   }
+  },
+  {
+   "control": "CTL-DATA",
+   "framework": "nist-ai-rmf",
+   "framework_version": "1.0",
+   "requirement": "MEASURE 2.10",
+   "research": {
+    "verdict": "weak",
+    "source": "https://airc.nist.gov/airmf-resources/airmf/5-sec-core/",
+    "note": "Proposed (not in spec §14)."
+   }
+  },
+  {
+   "control": "CTL-DATA",
+   "framework": "iso-42001",
+   "framework_version": "2023",
+   "requirement": "A.7",
+   "research": {
+    "verdict": "unverifiable",
+    "source": "https://www.iso.org/standard/81230.html (licensed; not verifiable from free sources)",
+    "note": "Confirm against a licensed copy of ISO/IEC 42001."
+   }
+  }
+ ]
+}

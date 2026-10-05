@@ -985,10 +985,29 @@ Batas file: 50 MB per file (konfigurabel), arsip depth ≤ 3, rasio dekompresi �
 
 ---
 
-## 14. Compliance Mapping (awal, berversi)
+## 14. Compliance Mapping (berversi; diperiksa terhadap teks resmi 2026-10-05, tiket 34)
 
-| Kontrol platform | OWASP LLM 2025 / ASI 2026 | NIST AI RMF / 600-1 | ISO/IEC 42001 Annex A | Regulasi ID |
+| Kontrol platform | OWASP LLM 2025 / ASI 2026 | NIST AI RMF 1.0 | ISO/IEC 42001 Annex A | Regulasi ID |
 |---|---|---|---|---|
+| AI app inventory & shadow AI | LLM03 (lemah) | GOVERN 1.6, MAP 1 (lemah) | A.4, A.6, A.10 | Tata Kelola Kecerdasan Artifisial Perbankan Indonesia (OJK, 2025): Bab 6 inventaris, Bab 4 Akuntabilitas |
+| Classification & DLP prompt/response | LLM02, LLM05 (lemah) | MEASURE 2.10, MANAGE 2 (lemah) | A.7, A.9 | UU PDP Pasal 35, 36, 38, 39; POJK 11/2022 Pasal 16 |
+| Prompt-injection detection | LLM01, LLM07, ASI01, ASI06 | MEASURE 2.7 | A.6.2 | POJK 11/2022 Pasal 21 (+ SEOJK 29/SEOJK.03/2022) |
+| Agent registry, least privilege, HITL, kill switch | LLM06, ASI02, ASI03, ASI10; ASI08, ASI09 (lemah) | GOVERN 3.2, MANAGE 2.4 | A.9, A.6 | Panduan AI OJK Bab 4 Human Oversight |
+| MCP gateway + tool description scan | ASI04, ASI02, LLM03 | MANAGE 3 | A.10 | POJK 11/2022 Pasal 29–34 (penyedia jasa TI) |
+| Rate limit / quota | LLM10 | MANAGE 2 (lemah) | A.6 | – |
+| Data residency & transfer control per app | – | GOVERN 1.1 | A.10 | POJK 11/2022 Pasal 35–36; UU PDP Pasal 56; PP 33/2026 (pasal transfer belum diidentifikasi) |
+| Incident + breach timer | – | MANAGE 4.3 | A.6.2.8 | UU PDP Pasal 46 (3×24 jam); POJK 11/2022 Pasal 60 (notifikasi awal ke OJK 24 jam) |
+| Audit log hash-chain & evidence | – | MEASURE 2.8, MANAGE 4.1 (lemah, pengganti) | A.6.2.8 | POJK 11/2022 Pasal 54(2) (jejak audit); Panduan AI OJK Bab 6 |
+| Posture report & control history | – | GOVERN 1, MEASURE 3 | Klausul 9 | POJK 11/2022 Pasal 59 (laporan kondisi TI tahunan, lemah) |
+| Data-at-rest discovery & remediation (usulan) | – | MEASURE 2.10 (lemah) | A.7 | UU PDP Pasal 35, 39 (lemah) |
+
+Catatan:
+- Perubahan dari mapping awal: GOVERN 4 dan MEASURE 4 (audit log) **salah** dan diganti; GOVERN 6 (residency) diganti GOVERN 1.1; ASI07 (MCP) diganti ASI02; POJK 11/2022 Pasal 60 ditambahkan (lebih ketat dari UU PDP); pasal POJK dibuat spesifik.
+- Sumber, kutipan, dan putusan per sel ada di `internal/compliance/library/mappings.json` dan di laporan export. **Pemeriksaan ini riset, bukan sign-off**: tim compliance MUST memverifikasi setiap mapping (`POST /compliance/mappings/verify`) sebelum dipakai sebagai bukti.
+- ISO/IEC 42001 tidak bisa diverifikasi dari sumber bebas (berbayar): semua sel ISO harus dikonfirmasi terhadap salinan berlisensi. Judul ASI01–ASI10 berasal dari sumber sekunder (PDF OWASP berbayar formulir).
+- EU AI Act hanya relevan jika ada layanan/penerima di UE (Annex III ditunda ke 2 Des 2027 oleh Digital Omnibus). `unspecified` apakah bank berada dalam cakupan.
+
+---|---|---|---|---|
 | AI app inventory & shadow AI | LLM03 | GOVERN 1.6 (inventory), MAP 1 | A.4, A.6, A.10 | Panduan AI Perbankan OJK (inventaris, akuntabilitas) |
 | Classification & DLP prompt/response | LLM02, LLM05 | MEASURE 2.10 (privacy), MANAGE 2 | A.7 (data), A.9 | UU PDP Pasal 35–39 (keamanan data), POJK 11 (keamanan informasi) |
 | Prompt-injection detection | LLM01, LLM07, ASI01, ASI06 | MEASURE 2.7 (security & resilience) | A.6.2 | POJK 11 / SEOJK ketahanan siber |

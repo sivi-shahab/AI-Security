@@ -1,0 +1,20 @@
+{
+ "id": "ojk-ai-guide",
+ "name": "Tata Kelola Kecerdasan Artifisial Perbankan Indonesia (OJK)",
+ "version": "2025",
+ "source": "https://www.ojk.go.id (Tata Kelola Kecerdasan Artifisial Perbankan Indonesia, PDF, 2025-04-29)",
+ "requirements": [
+  {
+   "id": "Bab 4 Akuntabilitas",
+   "title": "Prinsip 2: Accountability (Akuntabilitas)"
+  },
+  {
+   "id": "Bab 4 Pengawasan Manusia",
+   "title": "Prinsip 3: Human Oversight (Pengawasan Manusia)"
+  },
+  {
+   "id": "Bab 6 Inventaris",
+   "title": "Inventaris model secara menyeluruh dan keterlacakan (audit trail)"
+  }
+ ]
+}

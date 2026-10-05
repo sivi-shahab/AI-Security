@@ -1,0 +1,41 @@
+{
+ "id": "iso-42001",
+ "name": "ISO/IEC 42001:2023 Annex A",
+ "version": "2023",
+ "source": "https://www.iso.org/standard/81230.html (licensed; not verifiable from free sources)",
+ "requirements": [
+  {
+   "id": "A.4",
+   "title": "Resources for AI systems (to be confirmed)"
+  },
+  {
+   "id": "A.6",
+   "title": "AI system life cycle (to be confirmed)"
+  },
+  {
+   "id": "A.6.2",
+   "title": "AI system life cycle processes (to be confirmed)"
+  },
+  {
+   "id": "A.6.2.8",
+   "title": "AI system recording of event logs (to be confirmed)"
+  },
+  {
+   "id": "A.7",
+   "title": "Data for AI systems (to be confirmed)"
+  },
+  {
+   "id": "A.9",
+   "title": "Use of AI systems (to be confirmed)"
+  },
+  {
+   "id": "A.10",
+   "title": "Third-party and customer relationships (to be confirmed)"
+  },
+  {
+   "id": "Clause 9",
+   "title": "Performance evaluation (to be confirmed)"
+  }
+ ],
+ "note": "Control ids only. Titles and every mapping must be confirmed against a licensed copy of the standard."
+}

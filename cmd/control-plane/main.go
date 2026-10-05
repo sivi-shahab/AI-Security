@@ -19,6 +19,7 @@ import (
 	"aisec/internal/audit"
 	"aisec/internal/authz"
 	"aisec/internal/catalog"
+	"aisec/internal/compliance"
 	"aisec/internal/events"
 	"aisec/internal/identity"
 	"aisec/internal/incident"
@@ -219,10 +220,52 @@ func main() {
 		}
 	}()
 
+	// Compliance (ticket 34): evidence from the running platform, collected hourly and on demand.
+	postureSrc := posture.Sources{Search: search.Search, Apps: apps, Incidents: incidents, Policies: policies, Agents: registry}
+	complianceStore, err := compliance.Open(ctx, db, os.Getenv("TENANT_ID"), time.Now())
+	if err != nil {
+		fail("compliance store", err)
+	}
+	complianceSrc := compliance.Sources{DB: db, Posture: postureSrc.Compute, Agents: registry.Summarize, Incidents: incidents.Summarize,
+		Rules: func(ctx context.Context) (string, []map[string]any, error) {
+			rel, err := policies.Latest(ctx)
+			if err != nil {
+				return "", nil, err
+			}
+			var items []map[string]any
+			raw, _ := rel.Rules["items"].([]any)
+			for _, it := range raw {
+				if m, ok := it.(map[string]any); ok {
+					items = append(items, m)
+				}
+			}
+			return fmt.Sprintf("release-%d", rel.Number), items, nil
+		},
+		AuditChain: func(ctx context.Context, from, to time.Time) (int, error) {
+			prevSeq, prevHash, entries, err := auditLog.Range(ctx, from, to)
+			if err != nil {
+				return 0, err
+			}
+			return len(entries), audit.Verify(prevSeq, prevHash, entries)
+		}}
+	register := compliance.RegisterSources{
+		Apps: func(ctx context.Context) ([]catalog.View, error) {
+			vs, _, err := apps.List(ctx, catalog.ListOptions{}, time.Now())
+			return vs, err
+		},
+		Agents: func(ctx context.Context) ([]agents.Agent, error) { return registry.List(ctx, "") },
+	}
+	go func() {
+		for t := time.NewTicker(time.Hour); ctx.Err() == nil; <-t.C {
+			if _, err := complianceStore.Collect(ctx, complianceSrc, "control-plane", time.Now()); err != nil {
+				log.Error("compliance evidence", "err", err)
+			}
+		}
+	}()
 	routes(rt, deps{bundles: bundles, scim: ids.SCIMHandler(scimHash, os.Getenv("PUBLIC_URL")), metrics: metrics, mcpGateway: registry.GatewayHandler(mcpHash, time.Now), incidents: incidents, identity: ids,
 		policies: policies, simulator: simulator, apps: apps, feedKey: feedKey,
-		posture: posture.Sources{Search: search.Search, Apps: apps, Incidents: incidents, Policies: policies, Agents: registry},
-		agents:  registry, data: db, remediations: &remediate.Store{DB: db, Tenant: os.Getenv("TENANT_ID")}})
+		posture: postureSrc, compliance: complianceStore, complianceSources: complianceSrc, register: register,
+		agents: registry, data: db, remediations: &remediate.Store{DB: db, Tenant: os.Getenv("TENANT_ID")}})
 	server.Run("control-plane", rt.Mux)
 	cancel()
 	kc.Close()
