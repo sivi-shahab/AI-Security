@@ -841,7 +841,7 @@ normalize (NFKC, zero-width strip, homoglyph map, decode layers ≤ 3)
 | NER PII (ID/EN) | Transformer encoder kecil multibahasa (mis. keluarga XLM-R/mDeBERTa-small), distilasi → ONNX int8 | span + label |
 | Injection/jailbreak classifier | Encoder classifier biner + multi-label jenis serangan, fitur tambahan perplexity | score + types |
 | Document classifier (P1) | Encoder + head per kategori (legal, HR, finance, code) | label + confidence |
-| Similarity (P2) | Sentence embedding + MinHash/SimHash untuk near-dup | nearest match + score |
+| Similarity (P2) | Winnowing fingerprint shingle kata, ber-HMAC (excerpt verbatim ≥ 8 kata dijamin terdeteksi, tiket 37) + sentence embedding untuk parafrase (menunggu model self-hosted) | dokumen terdaftar + shared/containment |
 
 ### 9.3 Training Data
 - **Corpus.**

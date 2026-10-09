@@ -21,6 +21,7 @@ import (
 	"aisec/internal/catalog"
 	"aisec/internal/compliance"
 	"aisec/internal/events"
+	"aisec/internal/extract"
 	"aisec/internal/identity"
 	"aisec/internal/incident"
 	"aisec/internal/ingest"
@@ -30,11 +31,12 @@ import (
 	"aisec/internal/privacy"
 	"aisec/internal/remediate"
 	"aisec/internal/server"
+	"aisec/internal/similarity"
 	"aisec/policy"
 )
 
 // Env: BUNDLE_SIGNING_KEY_FILE, DATABASE_URL, INCIDENT_KEK_FILE (32 raw bytes), KAFKA_BROKERS, SCHEMA_REGISTRY_URL,
-// TENANT_ID, PUBLIC_URL, CATALOG_FEED_URL + CATALOG_FEED_PUBKEY_FILE (signed app catalog feed), OPENSEARCH_URL/USER/PASSWORD (policy simulation reads stored events), and identity (ADR-0002): OIDC_ISSUER, OIDC_AUDIENCE, OIDC_MFA_ACR (comma-separated acr
+// TENANT_ID, TENANT_PEPPER (similarity fingerprints, ticket 37), TIKA_URL (optional: PDF registration), PUBLIC_URL, CATALOG_FEED_URL + CATALOG_FEED_PUBKEY_FILE (signed app catalog feed), OPENSEARCH_URL/USER/PASSWORD (policy simulation reads stored events), and identity (ADR-0002): OIDC_ISSUER, OIDC_AUDIENCE, OIDC_MFA_ACR (comma-separated acr
 // values that mean MFA), BREAK_GLASS_SUBS (comma-separated token subs), SCIM_TOKEN_SHA256 (hex),
 // MCP_GATEWAY_TOKEN_SHA256 (hex; the MCP gateway reporting tools/list and asking for approvals, tickets 29-30),
 // APPROVAL_TTL (Go duration, default 15m), APPROVAL_WEBHOOK_URL (chat webhook for new approval requests; optional).
@@ -262,10 +264,22 @@ func main() {
 			}
 		}
 	}()
+	// Registered confidential documents (ticket 37): fingerprints keyed with the tenant pepper, read by detection-svc
+	// and the connector worker.
+	if err := similarity.Open(ctx, db); err != nil {
+		fail("similarity schema", err)
+	}
+	if os.Getenv("TENANT_PEPPER") == "" {
+		fail("config", fmt.Errorf("TENANT_PEPPER is required"))
+	}
+	confidential := &similarity.Store{DB: db, Tenant: os.Getenv("TENANT_ID"), Pepper: []byte(os.Getenv("TENANT_PEPPER"))}
+	if u := os.Getenv("TIKA_URL"); u != "" {
+		confidential.Tika = &extract.Tika{URL: u, HTTP: &http.Client{Timeout: 2 * time.Minute}}
+	}
 	routes(rt, deps{bundles: bundles, scim: ids.SCIMHandler(scimHash, os.Getenv("PUBLIC_URL")), metrics: metrics, mcpGateway: registry.GatewayHandler(mcpHash, time.Now), incidents: incidents, identity: ids,
 		policies: policies, simulator: simulator, apps: apps, feedKey: feedKey,
 		posture: postureSrc, compliance: complianceStore, complianceSources: complianceSrc, register: register,
-		agents: registry, data: db, remediations: &remediate.Store{DB: db, Tenant: os.Getenv("TENANT_ID")}})
+		agents: registry, data: db, remediations: &remediate.Store{DB: db, Tenant: os.Getenv("TENANT_ID")}, corpus: confidential})
 	server.Run("control-plane", rt.Mux)
 	cancel()
 	kc.Close()

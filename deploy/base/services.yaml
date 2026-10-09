@@ -24,7 +24,7 @@ spec:
           image: registry.local/aisec/control-plane:dev
           imagePullPolicy: Always
           ports: [{containerPort: 8080, name: http}]
-          # Secret control-plane (out of band): DATABASE_URL, KAFKA_BROKERS, SCHEMA_REGISTRY_URL, TENANT_ID, PUBLIC_URL,
+          # Secret control-plane (out of band): DATABASE_URL, KAFKA_BROKERS, SCHEMA_REGISTRY_URL, TENANT_ID, TENANT_PEPPER (ticket 37), PUBLIC_URL,
           # OIDC_ISSUER, OIDC_AUDIENCE, OIDC_MFA_ACR, BREAK_GLASS_SUBS, SCIM_TOKEN_SHA256 (ADR-0002), MCP_GATEWAY_TOKEN_SHA256 (tickets 29-30), APPROVAL_TTL, APPROVAL_WEBHOOK_URL (ticket 30),
           # OPENSEARCH_URL, OPENSEARCH_USER, OPENSEARCH_PASSWORD (policy simulation reads stored events),
           # CATALOG_FEED_URL + CATALOG_FEED_PUBKEY_FILE (signed AI app catalog feed, ticket 16; optional).
@@ -156,11 +156,14 @@ spec:
           image: registry.local/aisec/detection-svc:dev
           imagePullPolicy: Always
           ports: [{containerPort: 8080, name: http}]
+          # Secret detection-svc (out of band, optional): DATABASE_URL (read-only role on similarity.docs), TENANT_ID,
+          # TENANT_PEPPER (same as control-plane) for registered confidential documents (ticket 37).
+          envFrom: [{secretRef: {name: detection-svc, optional: true}}]
           readinessProbe: {httpGet: {path: /healthz, port: http}}
           livenessProbe: {httpGet: {path: /healthz, port: http}}
           resources:
             requests: {cpu: 50m, memory: 64Mi}
-            limits: {cpu: 500m, memory: 256Mi}
+            limits: {cpu: 500m, memory: 512Mi}  # similarity index in memory: ~16 KB per registered 5k-word document
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

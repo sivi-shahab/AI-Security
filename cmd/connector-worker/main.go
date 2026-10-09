@@ -25,6 +25,7 @@ import (
 	"aisec/internal/privacy"
 	"aisec/internal/remediate"
 	"aisec/internal/server"
+	"aisec/internal/similarity"
 )
 
 // Env (each source is on when its variables are set; at least one):
@@ -93,10 +94,17 @@ func main() {
 		tika = &extract.Tika{URL: u, HTTP: &http.Client{Timeout: 2 * time.Minute}}
 	}
 	pepper := []byte(env("TENANT_PEPPER"))
+	if err := similarity.Open(ctx, db); err != nil {
+		fail("similarity schema", err)
+	}
+	similar, err := similarity.Watch(ctx, db, env("TENANT_ID"), pepper, time.Minute, log)
+	if err != nil {
+		fail("similarity index", err)
+	}
 	var scanners []*datascan.Scanner
 	bySource := map[string]*datascan.Scanner{}
 	add := func(source string, c connector.Connector) {
-		s := &datascan.Scanner{DB: db, Source: source, Conn: c, Pepper: pepper, Labels: labels, Tika: tika, Log: log}
+		s := &datascan.Scanner{DB: db, Source: source, Conn: c, Pepper: pepper, Similar: similar, Labels: labels, Tika: tika, Log: log}
 		s.Defaults()
 		scanners = append(scanners, s)
 		bySource[source] = s

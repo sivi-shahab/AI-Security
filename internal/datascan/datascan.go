@@ -25,6 +25,7 @@ import (
 	"aisec/internal/connector"
 	"aisec/internal/detect"
 	"aisec/internal/extract"
+	"aisec/internal/similarity"
 )
 
 //go:embed schema.sql
@@ -49,7 +50,9 @@ type Scanner struct {
 	Limits extract.Limits
 	Tika   *extract.Tika
 	Pepper []byte
-	Labels map[string]string // external label id → sensitivity (tenant label taxonomy)
+	// Similar: registered confidential documents (ticket 37); nil = none.
+	Similar *similarity.Live
+	Labels  map[string]string // external label id → sensitivity (tenant label taxonomy)
 	// BroadGroups: groups that mean "everyone" (lower-case names).
 	BroadGroups []string
 	// Sampling (FR-DATA-3): in sample mode a stable SamplePercent of files (at most SampleMax) is read. After a
@@ -338,6 +341,7 @@ func (s *Scanner) classify(ctx context.Context, it connector.Item) (string, []de
 		note = fmt.Sprintf("classified first %d bytes", s.Limits.MaxText)
 	}
 	r := detect.Scan(res.Text)
+	similarity.Apply(&r, s.Similar.Index().Match(res.Text))
 	return r.Sensitivity, r.Classes, note
 }
 
