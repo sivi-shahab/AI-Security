@@ -32,6 +32,7 @@ import (
 	"aisec/internal/remediate"
 	"aisec/internal/server"
 	"aisec/internal/similarity"
+	"aisec/internal/tuning"
 	"aisec/policy"
 )
 
@@ -276,10 +277,15 @@ func main() {
 	if u := os.Getenv("TIKA_URL"); u != "" {
 		confidential.Tika = &extract.Tika{URL: u, HTTP: &http.Client{Timeout: 2 * time.Minute}}
 	}
+	// Per-tenant detector tuning (ticket 38): triage labels, opt-in training, gated rollout.
+	if err := tuning.Open(ctx, db); err != nil {
+		fail("tuning schema", err)
+	}
+	tuner := &tuning.Store{DB: db, Tenant: os.Getenv("TENANT_ID"), Pepper: []byte(os.Getenv("TENANT_PEPPER"))}
 	routes(rt, deps{bundles: bundles, scim: ids.SCIMHandler(scimHash, os.Getenv("PUBLIC_URL")), metrics: metrics, mcpGateway: registry.GatewayHandler(mcpHash, time.Now), incidents: incidents, identity: ids,
 		policies: policies, simulator: simulator, apps: apps, feedKey: feedKey,
 		posture: postureSrc, compliance: complianceStore, complianceSources: complianceSrc, register: register,
-		agents: registry, data: db, remediations: &remediate.Store{DB: db, Tenant: os.Getenv("TENANT_ID")}, corpus: confidential})
+		agents: registry, data: db, remediations: &remediate.Store{DB: db, Tenant: os.Getenv("TENANT_ID")}, corpus: confidential, tuning: tuner})
 	server.Run("control-plane", rt.Mux)
 	cancel()
 	kc.Close()

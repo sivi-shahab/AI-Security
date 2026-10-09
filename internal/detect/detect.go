@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"math"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
+	"unicode/utf8"
 )
 
 // Threshold is the confidence a match needs to be reported (and to count toward sensitivity, FR-CLS-3).
@@ -574,4 +576,59 @@ func Redact(text string, ms []Match, types ...string) string {
 	}
 	b.WriteString(text[at:])
 	return b.String()
+}
+
+// SnippetMax is the event snippet limit (spec §10.2).
+const SnippetMax = 200
+
+var longDigits = regexp.MustCompile(`\d(?:[ -]?\d){11,}`)
+
+// Snippet is the redacted context event snippets carry (spec §10.2): every match redacted, any remaining run of 12+
+// digits masked (events.Check rejects them), at most SnippetMax bytes centred on the first match of the most
+// sensitive class. PEPs and the per-tenant tuning model (ticket 38) build snippets with this one function, so a
+// model trained on stored snippets sees the same text at inference.
+func Snippet(text string, ms []Match) string {
+	at, best := 0, -1
+	for _, m := range ms {
+		if l := classLevel(m.Type); l > best {
+			best, at = l, m.Span[0]
+		}
+	}
+	lo, hi := max(0, at-SnippetMax/2), min(len(text), at+SnippetMax)
+	var in []Match
+	for _, m := range ms { // widen to whole matches at the edges, so no partial value survives
+		if m.Span[1] > lo && m.Span[0] < hi {
+			lo, hi = min(lo, m.Span[0]), max(hi, m.Span[1])
+			in = append(in, m)
+		}
+	}
+	for lo > 0 && !utf8.RuneStart(text[lo]) {
+		lo--
+	}
+	for hi < len(text) && !utf8.RuneStart(text[hi]) {
+		hi++
+	}
+	for k := range in {
+		in[k].Span = [2]int{in[k].Span[0] - lo, in[k].Span[1] - lo}
+	}
+	out := longDigits.ReplaceAllString(Redact(text[lo:hi], in), "[NUM]")
+	n := min(len(out), SnippetMax)
+	for n > 0 && n < len(out) && !utf8.RuneStart(out[n]) {
+		n--
+	}
+	return out[:n]
+}
+
+// Without drops the classes types (and their matches) from an L1 result and re-derives counts and sensitivity, e.g.
+// when a tenant tuning model judges a class a false positive (ticket 38). Run it before adding non-L1 findings.
+func Without(r Result, types ...string) Result {
+	var ms []Match
+	for _, m := range r.Matches {
+		if !slices.Contains(types, m.Type) {
+			ms = append(ms, m)
+		}
+	}
+	out := aggregate(append(ms, r.Injection.Evidence...))
+	out.Injection = r.Injection
+	return out
 }

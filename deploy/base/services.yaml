@@ -156,8 +156,8 @@ spec:
           image: registry.local/aisec/detection-svc:dev
           imagePullPolicy: Always
           ports: [{containerPort: 8080, name: http}]
-          # Secret detection-svc (out of band, optional): DATABASE_URL (read-only role on similarity.docs), TENANT_ID,
-          # TENANT_PEPPER (same as control-plane) for registered confidential documents (ticket 37).
+          # Secret detection-svc (out of band, optional): DATABASE_URL (read-only role on similarity.docs, tuning.models), TENANT_ID,
+          # TENANT_PEPPER (same as control-plane) for registered confidential documents (37) and tenant tuning models (38).
           envFrom: [{secretRef: {name: detection-svc, optional: true}}]
           readinessProbe: {httpGet: {path: /healthz, port: http}}
           livenessProbe: {httpGet: {path: /healthz, port: http}}

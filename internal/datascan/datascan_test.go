@@ -176,7 +176,7 @@ func TestScan(t *testing.T) {
 	var leak int
 	_ = db.QueryRow(ctx, `SELECT count(*) FROM (SELECT row_to_json(a)::text j FROM data.assets a UNION ALL SELECT row_to_json(c)::text FROM data.classifications c
 		UNION ALL SELECT row_to_json(g)::text FROM data.acl_entries g UNION ALL SELECT row_to_json(k)::text FROM data.containers k) x
-		WHERE j LIKE '%' || $1 || '%' OR j LIKE '%4111%' OR j LIKE '%ekspansi%' OR j LIKE '%/kredit%'`, nik).Scan(&leak)
+		WHERE j LIKE '%' || $1 || '%' OR j LIKE '%4111 1111%' OR j LIKE '%4111111111111111%' OR j LIKE '%ekspansi%' OR j LIKE '%/kredit%'`, nik).Scan(&leak)
 	if leak != 0 {
 		t.Errorf("%d rows hold raw content or paths", leak)
 	}

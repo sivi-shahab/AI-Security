@@ -13,7 +13,7 @@ import (
 func TestScanText(t *testing.T) {
 	post := func(body string) *httptest.ResponseRecorder {
 		w := httptest.NewRecorder()
-		scanText(nil)(w, httptest.NewRequest(http.MethodPost, "/scan/text", strings.NewReader(body)))
+		scanText(nil, nil)(w, httptest.NewRequest(http.MethodPost, "/scan/text", strings.NewReader(body)))
 		return w
 	}
 	w := post(`{"content": "NIK 3201011505900001", "channel": "ai_gateway", "direction": "request"}`)

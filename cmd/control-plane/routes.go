@@ -17,6 +17,7 @@ import (
 	"aisec/internal/posture"
 	"aisec/internal/remediate"
 	"aisec/internal/similarity"
+	"aisec/internal/tuning"
 )
 
 // deps are the handlers and stores routes need. Nil stores are fine for the route matrix test: it never calls a
@@ -38,6 +39,7 @@ type deps struct {
 	complianceSources      compliance.Sources
 	register               compliance.RegisterSources
 	corpus                 *similarity.Store // registered confidential documents (ticket 37)
+	tuning                 *tuning.Store     // per-tenant detector tuning (ticket 38)
 }
 
 // routes is the complete admin API. Everything not listed as Public needs a permission (deny by default);
@@ -62,4 +64,5 @@ func routes(rt *authz.Router, d deps) {
 	remediate.Routes(rt, d.remediations, time.Now)
 	compliance.Routes(rt, d.compliance, d.complianceSources, d.register, time.Now)
 	similarity.Routes(rt, d.corpus, time.Now)
+	tuning.Routes(rt, d.tuning, time.Now)
 }
