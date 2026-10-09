@@ -106,6 +106,12 @@ floor_override["unregistered-agent-high-tool"] := ov["unregistered-agent-high-to
 	agent.registered != true
 }
 
+# Ticket 39 (ASI08, ASI10): a tool call outside the agent's behaviour baseline is at least an incident.
+floor_override["agent-behavior-anomaly"] := ov["agent-behavior-anomaly"].score if {
+	input.direction == "tool_call"
+	count(object.get(input.agent, "behavior_anomalies", [])) > 0
+}
+
 applied := sort(object.keys(set_override) | object.keys(floor_override))
 
 set_scores := {s | some s in set_override}
@@ -138,7 +144,7 @@ config_errors contains sprintf("volume step %v outside [0,1]", [s]) if {
 }
 
 config_errors contains sprintf("override %v: missing or score outside [0,100]", [id]) if {
-	some id in {"secret-to-unsanctioned", "injection-then-high-tool", "pan-or-bulk-nik-to-personal-or-unsanctioned", "unregistered-agent-high-tool"}
+	some id in {"secret-to-unsanctioned", "injection-then-high-tool", "pan-or-bulk-nik-to-personal-or-unsanctioned", "unregistered-agent-high-tool", "agent-behavior-anomaly"}
 	not valid_score(object.get(cfg.overrides, [id, "score"], null))
 }
 

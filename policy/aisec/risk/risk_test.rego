@@ -159,6 +159,12 @@ override_cases := [
 		{"direction": "request", "agent": high_tool({"agent_id": "s"})},
 		90,
 	],
+	[
+		"agent-behavior-anomaly",
+		{"direction": "tool_call", "agent": {"agent_id": "a", "tool": "crm.read", "tool_risk": "low", "registered": true, "behavior_anomalies": ["new_tool"]}},
+		{"direction": "tool_call", "agent": {"agent_id": "a", "tool": "crm.read", "tool_risk": "low", "registered": true, "behavior_anomalies": []}},
+		60,
+	],
 ]
 
 test_every_override if {

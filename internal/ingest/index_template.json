@@ -46,6 +46,7 @@
         "scope_violations": {"type": "integer"},
         "rate_exceeded": {"type": "boolean"},
         "chain_depth": {"type": "integer"},
+        "behavior_anomalies": {"type": "keyword"},
         "mcp_server": {"type": "keyword"},
         "tool_hash": {"type": "keyword"},
         "approval_id": {"type": "keyword"},

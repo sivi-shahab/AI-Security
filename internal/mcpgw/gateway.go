@@ -75,8 +75,10 @@ type Gateway struct {
 	Pepper      []byte // tenant HMAC key for principal ids and content hashes (spec §10.2)
 	TenantID    string
 	DefaultRate int // tools/call per minute per agent and tool when the registry sets no rate_per_minute
-	Now         func() time.Time
-	Log         *slog.Logger
+	// Behavior: per-agent tool-call baselines (ticket 39); nil = no behaviour analytics.
+	Behavior *Behavior
+	Now      func() time.Time
+	Log      *slog.Logger
 
 	mu    sync.Mutex
 	taint map[string]taint
@@ -394,6 +396,11 @@ func (c *call) toolCall(ctx context.Context, msg *message) ([]byte, *message) {
 		limit = toolscope.RatePerMinute(t.Scopes, limit)
 	}
 	agent["rate_exceeded"] = c.g.overRate(c.agentID+"|"+name, limit)
+	if c.g.Behavior != nil { // every attempt counts, allowed or not: a rogue agent shows in what it tries
+		if an := c.g.Behavior.Observe(c.agentID, c.taintKey, name, c.g.Now()); len(an) > 0 {
+			agent["behavior_anomalies"] = an
+		}
+	}
 	if c.g.setTool(c.act, name) {
 		m := rpcError(msg.ID, "stopped by kill switch", map[string]any{"reason_codes": []string{"KILL_SWITCH"}})
 		return nil, &m
@@ -657,6 +664,7 @@ func (c *call) decide(ctx context.Context, direction, tool string, in *content, 
 		e.ApprovalID = c.approvalID
 	}
 	e.ToolHash, _ = agent["tool_hash"].(string)
+	e.BehaviorAnomalies, _ = agent["behavior_anomalies"].([]string)
 	if err := g.Emit(ctx, e); err != nil {
 		g.Log.Error("decision event", "err", err) // ponytail: logged, not retried; a local spool if Kafka outages bite
 	}

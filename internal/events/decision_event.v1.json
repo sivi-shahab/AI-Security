@@ -59,6 +59,7 @@
     "scope_violations": {"type": "integer", "minimum": 0},
     "rate_exceeded": {"type": "boolean"},
     "chain_depth": {"type": "integer", "minimum": 0},
+    "behavior_anomalies": {"type": "array", "items": {"enum": ["new_tool", "rare_sequence", "volume_spike"]}},
     "mcp_server": {"type": "string", "minLength": 1},
     "tool_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "approval_id": {"type": "string", "minLength": 1},

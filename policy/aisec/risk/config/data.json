@@ -19,6 +19,7 @@
     "secret-to-unsanctioned": {"score": 100, "description": "FR-RISK-2: credential/secret valid ke tujuan non-sanctioned (set)."},
     "injection-then-high-tool": {"score": 100, "injection_min": 0.8, "description": "FR-RISK-2: injection >= 0,8 di sesi (sebelumnya atau di tool call itu) lalu tool call high (set)."},
     "pan-or-bulk-nik-to-personal-or-unsanctioned": {"score": 90, "nik_min": 10, "description": "FR-RISK-2: PAN valid atau >= nik_min NIK valid ke personal account / app non-sanctioned (floor)."},
-    "unregistered-agent-high-tool": {"score": 90, "description": "FR-RISK-2: agent tidak terdaftar memanggil tool high (floor). registered tidak dikirim = tidak terdaftar."}
+    "unregistered-agent-high-tool": {"score": 90, "description": "FR-RISK-2: agent tidak terdaftar memanggil tool high (floor). registered tidak dikirim = tidak terdaftar."},
+    "agent-behavior-anomaly": {"score": 60, "description": "FR-RISK-2 (tiket 39): tool call di luar baseline perilaku agent (tool baru, urutan tak lazim, lonjakan volume) (floor, >= MinRisk incident)."}
   }
 }

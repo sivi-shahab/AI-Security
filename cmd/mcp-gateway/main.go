@@ -90,7 +90,8 @@ func main() {
 		// SSE streams stay open as long as the tool server keeps them: bound the wait for headers, not the body.
 		Upstream: &http.Client{Transport: &http.Transport{Proxy: http.ProxyFromEnvironment, ResponseHeaderTimeout: 30 * time.Second}},
 		Pepper:   []byte(os.Getenv("TENANT_PEPPER")), TenantID: os.Getenv("TENANT_ID"), DefaultRate: rate,
-		Now: time.Now, Log: log,
+		Behavior: &mcpgw.Behavior{}, // ticket 39: per-agent tool-call baselines, default thresholds
+		Now:      time.Now, Log: log,
 	}
 	// Kill switches reach live sessions within one poll of the bundle landing (FR-AGT-7: ≤ 10 s end to end).
 	go gw.WatchKills(ctx, time.Second)
