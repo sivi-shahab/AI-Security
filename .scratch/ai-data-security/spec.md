@@ -899,7 +899,7 @@ normalize (NFKC, zero-width strip, homoglyph map, decode layers ≤ 3)
 
 - **Pseudonymization.** Identitas user di analitik memakai HMAC. Re-identifikasi hanya untuk peran berhak.
 - **Model-training controls.** Konten tenant tidak dipakai melatih model global (§9.3). Kontrak dengan provider LLM yang diteruskan gateway MUST mengatur *no training on customer data* dan retensi. Nilai ini dicatat di katalog (`trains_on_data`).
-- **Minimisasi data untuk monitoring karyawan.** Transparansi ke karyawan melalui kebijakan internal. Pertimbangkan DPIA sebelum rollout inline proxy (UU PDP: penilaian dampak untuk pemantauan sistematis skala besar).
+- **Minimisasi data untuk monitoring karyawan.** Transparansi ke karyawan melalui kebijakan internal. DPIA (UU PDP Ps. 34: pemantauan sistematis skala besar) wajib ditandatangani DPO, Legal, HR, dan CISO sebelum inline proxy atau extension (tiket 22, 23) dirilis ke produksi: `docs/dpia-pemantauan-ai-karyawan.md` (tiket 35).
 - **Data residency [ASM-1, dikonfirmasi ADR-0001].** Semua komponen yang memproses konten di-deploy di DC dan DRC bank di Indonesia (POJK 11/2022 mensyaratkan data center dan DRC bank di Indonesia kecuali ada persetujuan OJK). Platform tidak punya komponen, penyimpanan, atau telemetri konten offshore; feed eksternal hanya *pull* masuk dan bertanda tangan. Prompt ke LLM offshore diatur lewat katalog (`hosting_region`, `ojk_approval_ref`) dan default policy per sensitivity: `restricted` → block, `confidential` → redact/tokenize, `internal`/`public` → allow hanya untuk app `sanctioned`. Detail: `docs/adr/0001-hosting-residency-build-scope.md`.
 
 ---

@@ -4,7 +4,7 @@ Status: deferred
 Type: task
 Priority: P1
 Milestone: M3+
-Blocked by: 01, 08, 11
+Blocked by: 01, 08, 11, 35 (rilis produksi)
 Spec: `../spec.md` §5.4; §11; §17 risiko TLS
 
 ## Konteks
@@ -20,6 +20,7 @@ Coverage inline tanpa extension, memakai SWG yang sudah ada (bergantung keputusa
 - [ ] Test dengan SWG target bank.
 - [ ] Overhead sesuai budget §13.1.
 - [ ] Fail mode terkonfigurasi.
+- [ ] Syarat DPIA (tiket 35, R9): adapter hanya memproses domain katalog AI; SWG mem-bypass TLS inspection untuk kategori sensitif (perbankan pribadi, kesehatan).
 
 ## Catatan ADR-0001
 Ditunda ke M3+ (DEC-5). Dievaluasi ulang setelah [ASM-5] inventaris SWG/CASB/DLP terverifikasi: lanjut bila vendor tidak punya kapabilitas ini, dibatalkan bila sudah ada (event vendor dikonsumsi lewat tiket 15).
