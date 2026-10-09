@@ -1,0 +1,43 @@
+{
+ "version": "v1",
+ "frozen": "2026-10-09",
+ "note": "Holdout. Never train or tune on it; a changed file fails the hash check (evalcorpus.Load).",
+ "files": [
+  {
+   "name": "synthetic-pii.jsonl",
+   "kind": "pii",
+   "samples": 640,
+   "sha256": "b27d2ea29f251165ada6e05c5e3763251af1ec1c6afdf3df800e2b34f3e10b4a",
+   "source": "synthetic: evalcorpus-gen/1",
+   "license": "internal",
+   "seed": 1
+  },
+  {
+   "name": "synthetic-injection.jsonl",
+   "kind": "injection",
+   "samples": 447,
+   "sha256": "dddbcbc879d2209117de122cfbaac78738c701367d83e98d40a9a093564d8e74",
+   "source": "synthetic: evalcorpus-gen/1",
+   "license": "internal",
+   "seed": 1
+  },
+  {
+   "name": "synthetic-benign.jsonl",
+   "kind": "benign",
+   "samples": 607,
+   "sha256": "0d04535c0abad8b2301bb816078316e6f9b40251d8c8d7ce76e2a1eed85dac1e",
+   "source": "synthetic: evalcorpus-gen/1",
+   "license": "internal",
+   "seed": 1
+  },
+  {
+   "name": "public-deepset-test.jsonl",
+   "kind": "mixed",
+   "samples": 116,
+   "sha256": "a4ef9fcc8742c06a9768c076a25bbbd53dd7cdd3eaa88c1b5500847ecb3df18e",
+   "source": "https://huggingface.co/datasets/deepset/prompt-injections (split test)",
+   "license": "Apache-2.0",
+   "upstream": "4f61ecb038e9c3fb77e21034b22511b523772cdd"
+  }
+ ]
+}

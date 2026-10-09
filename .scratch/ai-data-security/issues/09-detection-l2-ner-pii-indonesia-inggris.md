@@ -20,3 +20,6 @@ Entitas tanpa pola tetap (nama, alamat, diagnosis) butuh model NER.
 - [ ] F1 per entitas dilaporkan; ECE ≤ 0,05.
 - [ ] p95 L2 ≤ 50 ms (bersama classifier injection).
 - [ ] Model dirilis lewat shadow mode dulu.
+
+## Catatan dari tiket 04
+- Baseline L1 di holdout v1 (`evalcorpus score`): nomor KK sering dilaporkan sebagai NIK (KK recall 0,658, NIK precision 0,888). Konteks "KK/Kartu Keluarga" perlu mengalahkan NIK, atau NER membedakannya.
