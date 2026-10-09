@@ -4,7 +4,7 @@ Status: deferred
 Type: task
 Priority: P2
 Milestone: M4 (M3+ re-eval)
-Blocked by: 08, 11
+Blocked by: 08, 11, 35 (rilis produksi; DPIA harus di-review ulang untuk clipboard dan app desktop)
 Spec: `../spec.md` §3.1 P2; §5.4
 
 ## Konteks
