@@ -124,3 +124,12 @@ func VerifyFeed(raw []byte, sigB64 string, pubPEM []byte) (Feed, error) {
 //
 //go:embed seed.json
 var seedFeed []byte
+
+// SeedApps is the embedded seed catalog, for tools that run without the control plane (ticket 03 baseline).
+func SeedApps() []App {
+	f, err := ParseFeed(seedFeed)
+	if err != nil {
+		panic(err) // the seed is validated by tests and at control-plane start
+	}
+	return f.Apps
+}

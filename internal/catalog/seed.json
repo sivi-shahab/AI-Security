@@ -1,7 +1,7 @@
 {
- "version": 1,
- "published_at": "2026-10-03T00:00:00Z",
- "note": "Seed catalog: public domains and API signatures only. Attributes left null/unknown are for the bank to fill (override) or a later signed feed; ticket 03 extends this to ~200 apps.",
+ "version": 2,
+ "published_at": "2026-10-10T00:00:00Z",
+ "note": "Seed catalog: public domains and API signatures only, ~200 GenAI apps (ticket 03). General SaaS with embedded AI (Notion, Canva, Zoom, Bing) is left out: matching their whole domain would count all their use as AI. Attributes left null/unknown are for the bank to fill (override) or a later signed feed.",
  "apps": [
   {
    "id": "chatgpt",
@@ -347,6 +347,3560 @@
    "category": "meeting",
    "domains": [
     "otter.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "you-com",
+   "vendor": "You.com",
+   "name": "You.com",
+   "category": "chat",
+   "domains": [
+    "you.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "pi-ai",
+   "vendor": "Inflection AI",
+   "name": "Pi",
+   "category": "chat",
+   "domains": [
+    "pi.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "huggingface",
+   "vendor": "Hugging Face",
+   "name": "Hugging Face / HuggingChat",
+   "category": "chat",
+   "domains": [
+    "huggingface.co",
+    "hf.co"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "meta-ai",
+   "vendor": "Meta",
+   "name": "Meta AI",
+   "category": "chat",
+   "domains": [
+    "meta.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "grok",
+   "vendor": "xAI",
+   "name": "Grok / xAI API",
+   "category": "chat",
+   "domains": [
+    "grok.com",
+    "x.ai",
+    "api.x.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "kimi",
+   "vendor": "Moonshot AI",
+   "name": "Kimi",
+   "category": "chat",
+   "domains": [
+    "kimi.com",
+    "kimi.moonshot.cn",
+    "api.moonshot.cn",
+    "api.moonshot.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "doubao",
+   "vendor": "ByteDance",
+   "name": "Doubao",
+   "category": "chat",
+   "domains": [
+    "doubao.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "ernie-bot",
+   "vendor": "Baidu",
+   "name": "ERNIE Bot (Yiyan)",
+   "category": "chat",
+   "domains": [
+    "yiyan.baidu.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "chatglm",
+   "vendor": "Zhipu AI",
+   "name": "ChatGLM / BigModel",
+   "category": "chat",
+   "domains": [
+    "chatglm.cn",
+    "open.bigmodel.cn",
+    "z.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "minimax",
+   "vendor": "MiniMax",
+   "name": "MiniMax",
+   "category": "chat",
+   "domains": [
+    "minimaxi.com",
+    "minimax.io",
+    "api.minimax.chat"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "hunyuan",
+   "vendor": "Tencent",
+   "name": "Yuanbao (Hunyuan)",
+   "category": "chat",
+   "domains": [
+    "yuanbao.tencent.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "baichuan",
+   "vendor": "Baichuan",
+   "name": "Baichuan",
+   "category": "chat",
+   "domains": [
+    "baichuan-ai.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "stepfun",
+   "vendor": "StepFun",
+   "name": "StepFun / Yuewen",
+   "category": "chat",
+   "domains": [
+    "stepfun.com",
+    "yuewen.cn"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "zero-one-ai",
+   "vendor": "01.AI",
+   "name": "Yi / Wanzhi",
+   "category": "chat",
+   "domains": [
+    "lingyiwanwu.com",
+    "01.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "iflytek-spark",
+   "vendor": "iFlytek",
+   "name": "Spark",
+   "category": "chat",
+   "domains": [
+    "xinghuo.xfyun.cn"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "tiangong",
+   "vendor": "Kunlun Tech",
+   "name": "Tiangong",
+   "category": "chat",
+   "domains": [
+    "tiangong.cn"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "hyperclova-x",
+   "vendor": "Naver",
+   "name": "HyperCLOVA X",
+   "category": "chat",
+   "domains": [
+    "clova-x.naver.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "wrtn",
+   "vendor": "Wrtn Technologies",
+   "name": "Wrtn",
+   "category": "chat",
+   "domains": [
+    "wrtn.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "upstage",
+   "vendor": "Upstage",
+   "name": "Upstage Solar",
+   "category": "chat",
+   "domains": [
+    "upstage.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "cohere",
+   "vendor": "Cohere",
+   "name": "Cohere",
+   "category": "chat",
+   "domains": [
+    "cohere.com",
+    "api.cohere.ai",
+    "api.cohere.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "ai21",
+   "vendor": "AI21 Labs",
+   "name": "AI21 Studio",
+   "category": "chat",
+   "domains": [
+    "ai21.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "groq",
+   "vendor": "Groq",
+   "name": "GroqCloud",
+   "category": "chat",
+   "domains": [
+    "groq.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "together-ai",
+   "vendor": "Together AI",
+   "name": "Together AI",
+   "category": "chat",
+   "domains": [
+    "together.ai",
+    "api.together.xyz"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "fireworks-ai",
+   "vendor": "Fireworks AI",
+   "name": "Fireworks AI",
+   "category": "chat",
+   "domains": [
+    "fireworks.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "openrouter",
+   "vendor": "OpenRouter",
+   "name": "OpenRouter",
+   "category": "chat",
+   "domains": [
+    "openrouter.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "replicate",
+   "vendor": "Replicate",
+   "name": "Replicate",
+   "category": "chat",
+   "domains": [
+    "replicate.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "deepinfra",
+   "vendor": "DeepInfra",
+   "name": "DeepInfra",
+   "category": "chat",
+   "domains": [
+    "deepinfra.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "cerebras",
+   "vendor": "Cerebras",
+   "name": "Cerebras Inference",
+   "category": "chat",
+   "domains": [
+    "cerebras.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "sambanova",
+   "vendor": "SambaNova",
+   "name": "SambaNova Cloud",
+   "category": "chat",
+   "domains": [
+    "sambanova.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "novita",
+   "vendor": "Novita AI",
+   "name": "Novita AI",
+   "category": "chat",
+   "domains": [
+    "novita.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "siliconflow",
+   "vendor": "SiliconFlow",
+   "name": "SiliconFlow",
+   "category": "chat",
+   "domains": [
+    "siliconflow.cn",
+    "siliconflow.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "baseten",
+   "vendor": "Baseten",
+   "name": "Baseten",
+   "category": "chat",
+   "domains": [
+    "baseten.co"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "nvidia-nim",
+   "vendor": "NVIDIA",
+   "name": "NVIDIA NIM API",
+   "category": "chat",
+   "domains": [
+    "build.nvidia.com",
+    "integrate.api.nvidia.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "azure-openai",
+   "vendor": "Microsoft",
+   "name": "Azure OpenAI / Azure AI Foundry",
+   "category": "chat",
+   "domains": [
+    "openai.azure.com",
+    "services.ai.azure.com",
+    "ai.azure.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "aws-bedrock",
+   "vendor": "Amazon Web Services",
+   "name": "Amazon Bedrock",
+   "category": "chat",
+   "domains": [
+    "bedrock-runtime.us-east-1.amazonaws.com",
+    "bedrock.us-east-1.amazonaws.com",
+    "bedrock-runtime.us-west-2.amazonaws.com",
+    "bedrock.us-west-2.amazonaws.com",
+    "bedrock-runtime.eu-central-1.amazonaws.com",
+    "bedrock.eu-central-1.amazonaws.com",
+    "bedrock-runtime.ap-southeast-1.amazonaws.com",
+    "bedrock.ap-southeast-1.amazonaws.com",
+    "bedrock-runtime.ap-southeast-3.amazonaws.com",
+    "bedrock.ap-southeast-3.amazonaws.com",
+    "bedrock-runtime.ap-northeast-1.amazonaws.com",
+    "bedrock.ap-northeast-1.amazonaws.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "vertex-ai",
+   "vendor": "Google",
+   "name": "Vertex AI",
+   "category": "chat",
+   "domains": [
+    "aiplatform.googleapis.com",
+    "us-central1-aiplatform.googleapis.com",
+    "asia-southeast1-aiplatform.googleapis.com",
+    "asia-southeast2-aiplatform.googleapis.com",
+    "europe-west4-aiplatform.googleapis.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "ollama",
+   "vendor": "Ollama",
+   "name": "Ollama (model registry)",
+   "category": "chat",
+   "domains": [
+    "ollama.com",
+    "registry.ollama.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "lm-studio",
+   "vendor": "Element Labs",
+   "name": "LM Studio",
+   "category": "chat",
+   "domains": [
+    "lmstudio.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "lmarena",
+   "vendor": "LMArena",
+   "name": "LMArena (Chatbot Arena)",
+   "category": "chat",
+   "domains": [
+    "lmarena.ai",
+    "chat.lmsys.org"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "typingmind",
+   "vendor": "TypingMind",
+   "name": "TypingMind",
+   "category": "chat",
+   "domains": [
+    "typingmind.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "deepl",
+   "vendor": "DeepL",
+   "name": "DeepL Translate / Write",
+   "category": "chat",
+   "domains": [
+    "deepl.com",
+    "api.deepl.com",
+    "api-free.deepl.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "chatpdf",
+   "vendor": "ChatPDF",
+   "name": "ChatPDF",
+   "category": "chat",
+   "domains": [
+    "chatpdf.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "askyourpdf",
+   "vendor": "AskYourPDF",
+   "name": "AskYourPDF",
+   "category": "chat",
+   "domains": [
+    "askyourpdf.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "pdf-ai",
+   "vendor": "PDF.ai",
+   "name": "PDF.ai",
+   "category": "chat",
+   "domains": [
+    "pdf.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "humata",
+   "vendor": "Humata",
+   "name": "Humata",
+   "category": "chat",
+   "domains": [
+    "humata.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "consensus",
+   "vendor": "Consensus",
+   "name": "Consensus",
+   "category": "chat",
+   "domains": [
+    "consensus.app"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "elicit",
+   "vendor": "Elicit",
+   "name": "Elicit",
+   "category": "chat",
+   "domains": [
+    "elicit.com",
+    "elicit.org"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "scite",
+   "vendor": "Scite",
+   "name": "Scite",
+   "category": "chat",
+   "domains": [
+    "scite.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "scispace",
+   "vendor": "SciSpace",
+   "name": "SciSpace",
+   "category": "chat",
+   "domains": [
+    "scispace.com",
+    "typeset.io"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "explainpaper",
+   "vendor": "Explainpaper",
+   "name": "Explainpaper",
+   "category": "chat",
+   "domains": [
+    "explainpaper.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "felo",
+   "vendor": "Felo",
+   "name": "Felo Search",
+   "category": "chat",
+   "domains": [
+    "felo.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "metaso",
+   "vendor": "Metaso",
+   "name": "Metaso AI Search",
+   "category": "chat",
+   "domains": [
+    "metaso.cn"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "julius-ai",
+   "vendor": "Julius AI",
+   "name": "Julius AI",
+   "category": "chat",
+   "domains": [
+    "julius.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "chatbase",
+   "vendor": "Chatbase",
+   "name": "Chatbase",
+   "category": "chat",
+   "domains": [
+    "chatbase.co"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "janitor-ai",
+   "vendor": "JanitorAI",
+   "name": "JanitorAI",
+   "category": "chat",
+   "domains": [
+    "janitorai.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "replika",
+   "vendor": "Luka",
+   "name": "Replika",
+   "category": "chat",
+   "domains": [
+    "replika.com",
+    "replika.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "gauth",
+   "vendor": "Gauth",
+   "name": "Gauth",
+   "category": "chat",
+   "domains": [
+    "gauthmath.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "jasper",
+   "vendor": "Jasper",
+   "name": "Jasper",
+   "category": "chat",
+   "domains": [
+    "jasper.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "copy-ai",
+   "vendor": "Copy.ai",
+   "name": "Copy.ai",
+   "category": "chat",
+   "domains": [
+    "copy.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "writesonic",
+   "vendor": "Writesonic",
+   "name": "Writesonic / Chatsonic",
+   "category": "chat",
+   "domains": [
+    "writesonic.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "rytr",
+   "vendor": "Rytr",
+   "name": "Rytr",
+   "category": "chat",
+   "domains": [
+    "rytr.me"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "quillbot",
+   "vendor": "QuillBot",
+   "name": "QuillBot",
+   "category": "chat",
+   "domains": [
+    "quillbot.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "hyperwrite",
+   "vendor": "OthersideAI",
+   "name": "HyperWrite",
+   "category": "chat",
+   "domains": [
+    "hyperwriteai.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "textcortex",
+   "vendor": "TextCortex",
+   "name": "TextCortex",
+   "category": "chat",
+   "domains": [
+    "textcortex.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "anyword",
+   "vendor": "Anyword",
+   "name": "Anyword",
+   "category": "chat",
+   "domains": [
+    "anyword.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "sudowrite",
+   "vendor": "Sudowrite",
+   "name": "Sudowrite",
+   "category": "chat",
+   "domains": [
+    "sudowrite.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "novelai",
+   "vendor": "Anlatan",
+   "name": "NovelAI",
+   "category": "chat",
+   "domains": [
+    "novelai.net"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "lex",
+   "vendor": "Lex",
+   "name": "Lex",
+   "category": "chat",
+   "domains": [
+    "lex.page"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "hix-ai",
+   "vendor": "HIX.AI",
+   "name": "HIX.AI",
+   "category": "chat",
+   "domains": [
+    "hix.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "frase",
+   "vendor": "Frase",
+   "name": "Frase",
+   "category": "chat",
+   "domains": [
+    "frase.io"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "writer",
+   "vendor": "Writer",
+   "name": "Writer",
+   "category": "chat",
+   "domains": [
+    "writer.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "lavender",
+   "vendor": "Lavender",
+   "name": "Lavender",
+   "category": "chat",
+   "domains": [
+    "lavender.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "gamma",
+   "vendor": "Gamma",
+   "name": "Gamma",
+   "category": "chat",
+   "domains": [
+    "gamma.app"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "tome",
+   "vendor": "Tome",
+   "name": "Tome",
+   "category": "chat",
+   "domains": [
+    "tome.app"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "beautiful-ai",
+   "vendor": "Beautiful.ai",
+   "name": "Beautiful.ai",
+   "category": "chat",
+   "domains": [
+    "beautiful.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "wordtune",
+   "vendor": "AI21 Labs",
+   "name": "Wordtune",
+   "category": "plugin/extension",
+   "domains": [
+    "wordtune.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "monica",
+   "vendor": "Monica",
+   "name": "Monica",
+   "category": "plugin/extension",
+   "domains": [
+    "monica.im"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "merlin",
+   "vendor": "Foyer",
+   "name": "Merlin",
+   "category": "plugin/extension",
+   "domains": [
+    "getmerlin.in"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "sider",
+   "vendor": "Sider",
+   "name": "Sider",
+   "category": "plugin/extension",
+   "domains": [
+    "sider.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "maxai",
+   "vendor": "MaxAI",
+   "name": "MaxAI",
+   "category": "plugin/extension",
+   "domains": [
+    "maxai.me"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "harpa",
+   "vendor": "HARPA AI",
+   "name": "HARPA AI",
+   "category": "plugin/extension",
+   "domains": [
+    "harpa.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "liner",
+   "vendor": "Liner",
+   "name": "Liner",
+   "category": "plugin/extension",
+   "domains": [
+    "liner.com",
+    "getliner.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "compose-ai",
+   "vendor": "Compose AI",
+   "name": "Compose AI",
+   "category": "plugin/extension",
+   "domains": [
+    "compose.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "chatgpt-writer",
+   "vendor": "ChatGPT Writer",
+   "name": "ChatGPT Writer",
+   "category": "plugin/extension",
+   "domains": [
+    "chatgptwriter.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "tactiq",
+   "vendor": "Tactiq",
+   "name": "Tactiq",
+   "category": "plugin/extension",
+   "domains": [
+    "tactiq.io"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "phind",
+   "vendor": "Phind",
+   "name": "Phind",
+   "category": "code",
+   "domains": [
+    "phind.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "blackbox-ai",
+   "vendor": "Blackbox",
+   "name": "Blackbox AI",
+   "category": "code",
+   "domains": [
+    "blackbox.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "v0",
+   "vendor": "Vercel",
+   "name": "v0",
+   "category": "code",
+   "domains": [
+    "v0.dev",
+    "v0.app"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "bolt",
+   "vendor": "StackBlitz",
+   "name": "Bolt.new",
+   "category": "code",
+   "domains": [
+    "bolt.new"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "lovable",
+   "vendor": "Lovable",
+   "name": "Lovable",
+   "category": "code",
+   "domains": [
+    "lovable.dev"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "replit",
+   "vendor": "Replit",
+   "name": "Replit",
+   "category": "code",
+   "domains": [
+    "replit.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "windsurf",
+   "vendor": "Windsurf (Codeium)",
+   "name": "Windsurf / Codeium",
+   "category": "code",
+   "domains": [
+    "windsurf.com",
+    "codeium.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "tabnine",
+   "vendor": "Tabnine",
+   "name": "Tabnine",
+   "category": "code",
+   "domains": [
+    "tabnine.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "sourcegraph-cody",
+   "vendor": "Sourcegraph",
+   "name": "Cody",
+   "category": "code",
+   "domains": [
+    "sourcegraph.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "amazon-q",
+   "vendor": "Amazon Web Services",
+   "name": "Amazon Q Developer / CodeWhisperer",
+   "category": "code",
+   "domains": [
+    "q.us-east-1.amazonaws.com",
+    "codewhisperer.us-east-1.amazonaws.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "kiro",
+   "vendor": "Amazon Web Services",
+   "name": "Kiro",
+   "category": "code",
+   "domains": [
+    "kiro.dev"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "jetbrains-ai",
+   "vendor": "JetBrains",
+   "name": "JetBrains AI Assistant",
+   "category": "code",
+   "domains": [
+    "api.jetbrains.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "gemini-code-assist",
+   "vendor": "Google",
+   "name": "Gemini Code Assist",
+   "category": "code",
+   "domains": [
+    "cloudcode-pa.googleapis.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "trae",
+   "vendor": "ByteDance",
+   "name": "Trae",
+   "category": "code",
+   "domains": [
+    "trae.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "augment-code",
+   "vendor": "Augment",
+   "name": "Augment Code",
+   "category": "code",
+   "domains": [
+    "augmentcode.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "qodo",
+   "vendor": "Qodo",
+   "name": "Qodo (Codium)",
+   "category": "code",
+   "domains": [
+    "qodo.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "pieces",
+   "vendor": "Pieces",
+   "name": "Pieces for Developers",
+   "category": "code",
+   "domains": [
+    "pieces.app"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "coderabbit",
+   "vendor": "CodeRabbit",
+   "name": "CodeRabbit",
+   "category": "code",
+   "domains": [
+    "coderabbit.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "greptile",
+   "vendor": "Greptile",
+   "name": "Greptile",
+   "category": "code",
+   "domains": [
+    "greptile.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "sourcery",
+   "vendor": "Sourcery",
+   "name": "Sourcery",
+   "category": "code",
+   "domains": [
+    "sourcery.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "uizard",
+   "vendor": "Uizard",
+   "name": "Uizard",
+   "category": "code",
+   "domains": [
+    "uizard.io"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "devin",
+   "vendor": "Cognition",
+   "name": "Devin",
+   "category": "agent",
+   "domains": [
+    "devin.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "manus",
+   "vendor": "Manus",
+   "name": "Manus",
+   "category": "agent",
+   "domains": [
+    "manus.im"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "genspark",
+   "vendor": "Genspark",
+   "name": "Genspark",
+   "category": "agent",
+   "domains": [
+    "genspark.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "relevance-ai",
+   "vendor": "Relevance AI",
+   "name": "Relevance AI",
+   "category": "agent",
+   "domains": [
+    "relevanceai.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "lindy",
+   "vendor": "Lindy",
+   "name": "Lindy",
+   "category": "agent",
+   "domains": [
+    "lindy.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "crewai",
+   "vendor": "CrewAI",
+   "name": "CrewAI",
+   "category": "agent",
+   "domains": [
+    "crewai.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "langsmith",
+   "vendor": "LangChain",
+   "name": "LangSmith",
+   "category": "agent",
+   "domains": [
+    "smith.langchain.com",
+    "api.smith.langchain.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "dify",
+   "vendor": "LangGenius",
+   "name": "Dify",
+   "category": "agent",
+   "domains": [
+    "dify.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "botpress",
+   "vendor": "Botpress",
+   "name": "Botpress",
+   "category": "agent",
+   "domains": [
+    "botpress.com",
+    "botpress.cloud"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "voiceflow",
+   "vendor": "Voiceflow",
+   "name": "Voiceflow",
+   "category": "agent",
+   "domains": [
+    "voiceflow.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "agentgpt",
+   "vendor": "Reworkd",
+   "name": "AgentGPT",
+   "category": "agent",
+   "domains": [
+    "agentgpt.reworkd.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "multion",
+   "vendor": "MultiOn",
+   "name": "MultiOn",
+   "category": "agent",
+   "domains": [
+    "multion.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "browser-use",
+   "vendor": "Browser Use",
+   "name": "Browser Use Cloud",
+   "category": "agent",
+   "domains": [
+    "browser-use.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "glean",
+   "vendor": "Glean",
+   "name": "Glean",
+   "category": "agent",
+   "domains": [
+    "glean.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "coze",
+   "vendor": "ByteDance",
+   "name": "Coze",
+   "category": "agent",
+   "domains": [
+    "coze.com",
+    "coze.cn"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "sora",
+   "vendor": "OpenAI",
+   "name": "Sora",
+   "category": "image",
+   "domains": [
+    "sora.com",
+    "sora.chatgpt.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "stability-ai",
+   "vendor": "Stability AI",
+   "name": "Stability AI / DreamStudio",
+   "category": "image",
+   "domains": [
+    "stability.ai",
+    "dreamstudio.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "leonardo-ai",
+   "vendor": "Leonardo.Ai",
+   "name": "Leonardo.Ai",
+   "category": "image",
+   "domains": [
+    "leonardo.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "ideogram",
+   "vendor": "Ideogram",
+   "name": "Ideogram",
+   "category": "image",
+   "domains": [
+    "ideogram.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "adobe-firefly",
+   "vendor": "Adobe",
+   "name": "Adobe Firefly",
+   "category": "image",
+   "domains": [
+    "firefly.adobe.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "runway",
+   "vendor": "Runway",
+   "name": "Runway",
+   "category": "image",
+   "domains": [
+    "runwayml.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "pika",
+   "vendor": "Pika",
+   "name": "Pika",
+   "category": "image",
+   "domains": [
+    "pika.art"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "luma-ai",
+   "vendor": "Luma AI",
+   "name": "Luma Dream Machine",
+   "category": "image",
+   "domains": [
+    "lumalabs.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "kling",
+   "vendor": "Kuaishou",
+   "name": "Kling AI",
+   "category": "image",
+   "domains": [
+    "klingai.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "hailuo",
+   "vendor": "MiniMax",
+   "name": "Hailuo AI",
+   "category": "image",
+   "domains": [
+    "hailuoai.video",
+    "hailuoai.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "synthesia",
+   "vendor": "Synthesia",
+   "name": "Synthesia",
+   "category": "image",
+   "domains": [
+    "synthesia.io"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "heygen",
+   "vendor": "HeyGen",
+   "name": "HeyGen",
+   "category": "image",
+   "domains": [
+    "heygen.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "d-id",
+   "vendor": "D-ID",
+   "name": "D-ID",
+   "category": "image",
+   "domains": [
+    "d-id.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "hedra",
+   "vendor": "Hedra",
+   "name": "Hedra",
+   "category": "image",
+   "domains": [
+    "hedra.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "elevenlabs",
+   "vendor": "ElevenLabs",
+   "name": "ElevenLabs",
+   "category": "image",
+   "domains": [
+    "elevenlabs.io"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "murf",
+   "vendor": "Murf",
+   "name": "Murf AI",
+   "category": "image",
+   "domains": [
+    "murf.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "playht",
+   "vendor": "PlayHT",
+   "name": "PlayHT",
+   "category": "image",
+   "domains": [
+    "play.ht"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "suno",
+   "vendor": "Suno",
+   "name": "Suno",
+   "category": "image",
+   "domains": [
+    "suno.com",
+    "suno.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "udio",
+   "vendor": "Udio",
+   "name": "Udio",
+   "category": "image",
+   "domains": [
+    "udio.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "remove-bg",
+   "vendor": "Canva",
+   "name": "remove.bg",
+   "category": "image",
+   "domains": [
+    "remove.bg"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "photoroom",
+   "vendor": "Photoroom",
+   "name": "Photoroom",
+   "category": "image",
+   "domains": [
+    "photoroom.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "krea",
+   "vendor": "Krea",
+   "name": "Krea",
+   "category": "image",
+   "domains": [
+    "krea.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "playground-ai",
+   "vendor": "Playground",
+   "name": "Playground",
+   "category": "image",
+   "domains": [
+    "playground.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "nightcafe",
+   "vendor": "NightCafe",
+   "name": "NightCafe Creator",
+   "category": "image",
+   "domains": [
+    "nightcafe.studio"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "craiyon",
+   "vendor": "Craiyon",
+   "name": "Craiyon",
+   "category": "image",
+   "domains": [
+    "craiyon.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "lexica",
+   "vendor": "Lexica",
+   "name": "Lexica",
+   "category": "image",
+   "domains": [
+    "lexica.art"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "civitai",
+   "vendor": "Civitai",
+   "name": "Civitai",
+   "category": "image",
+   "domains": [
+    "civitai.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "tensor-art",
+   "vendor": "Tensor.Art",
+   "name": "Tensor.Art",
+   "category": "image",
+   "domains": [
+    "tensor.art"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "seaart",
+   "vendor": "SeaArt",
+   "name": "SeaArt",
+   "category": "image",
+   "domains": [
+    "seaart.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "recraft",
+   "vendor": "Recraft",
+   "name": "Recraft",
+   "category": "image",
+   "domains": [
+    "recraft.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "black-forest-labs",
+   "vendor": "Black Forest Labs",
+   "name": "FLUX API",
+   "category": "image",
+   "domains": [
+    "blackforestlabs.ai",
+    "api.bfl.ml",
+    "bfl.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "invideo",
+   "vendor": "InVideo",
+   "name": "InVideo AI",
+   "category": "image",
+   "domains": [
+    "invideo.io"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "captions",
+   "vendor": "Captions",
+   "name": "Captions",
+   "category": "image",
+   "domains": [
+    "captions.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "opus-clip",
+   "vendor": "OpusClip",
+   "name": "OpusClip",
+   "category": "image",
+   "domains": [
+    "opus.pro"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "fal-ai",
+   "vendor": "fal",
+   "name": "fal.ai",
+   "category": "image",
+   "domains": [
+    "fal.ai",
+    "fal.run"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "deepai",
+   "vendor": "DeepAI",
+   "name": "DeepAI",
+   "category": "image",
+   "domains": [
+    "deepai.org"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "openart",
+   "vendor": "OpenArt",
+   "name": "OpenArt",
+   "category": "image",
+   "domains": [
+    "openart.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "getimg",
+   "vendor": "getimg.ai",
+   "name": "getimg.ai",
+   "category": "image",
+   "domains": [
+    "getimg.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "dreamina",
+   "vendor": "ByteDance",
+   "name": "Dreamina",
+   "category": "image",
+   "domains": [
+    "dreamina.capcut.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "galileo-ai",
+   "vendor": "Galileo AI",
+   "name": "Galileo AI",
+   "category": "image",
+   "domains": [
+    "usegalileo.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "fireflies",
+   "vendor": "Fireflies.ai",
+   "name": "Fireflies.ai",
+   "category": "meeting",
+   "domains": [
+    "fireflies.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "fathom",
+   "vendor": "Fathom",
+   "name": "Fathom",
+   "category": "meeting",
+   "domains": [
+    "fathom.video"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "tldv",
+   "vendor": "tl;dv",
+   "name": "tl;dv",
+   "category": "meeting",
+   "domains": [
+    "tldv.io"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "read-ai",
+   "vendor": "Read AI",
+   "name": "Read AI",
+   "category": "meeting",
+   "domains": [
+    "read.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "avoma",
+   "vendor": "Avoma",
+   "name": "Avoma",
+   "category": "meeting",
+   "domains": [
+    "avoma.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "krisp",
+   "vendor": "Krisp",
+   "name": "Krisp",
+   "category": "meeting",
+   "domains": [
+    "krisp.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "grain",
+   "vendor": "Grain",
+   "name": "Grain",
+   "category": "meeting",
+   "domains": [
+    "grain.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "sembly",
+   "vendor": "Sembly",
+   "name": "Sembly AI",
+   "category": "meeting",
+   "domains": [
+    "sembly.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "supernormal",
+   "vendor": "Supernormal",
+   "name": "Supernormal",
+   "category": "meeting",
+   "domains": [
+    "supernormal.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "circleback",
+   "vendor": "Circleback",
+   "name": "Circleback",
+   "category": "meeting",
+   "domains": [
+    "circleback.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "notta",
+   "vendor": "Notta",
+   "name": "Notta",
+   "category": "meeting",
+   "domains": [
+    "notta.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "rev",
+   "vendor": "Rev",
+   "name": "Rev",
+   "category": "meeting",
+   "domains": [
+    "rev.com",
+    "rev.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "trint",
+   "vendor": "Trint",
+   "name": "Trint",
+   "category": "meeting",
+   "domains": [
+    "trint.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "happyscribe",
+   "vendor": "Happy Scribe",
+   "name": "Happy Scribe",
+   "category": "meeting",
+   "domains": [
+    "happyscribe.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "granola",
+   "vendor": "Granola",
+   "name": "Granola",
+   "category": "meeting",
+   "domains": [
+    "granola.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "voyage-ai",
+   "vendor": "Voyage AI",
+   "name": "Voyage AI",
+   "category": "embedding",
+   "domains": [
+    "voyageai.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "jina-ai",
+   "vendor": "Jina AI",
+   "name": "Jina AI",
+   "category": "embedding",
+   "domains": [
+    "jina.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "pinecone",
+   "vendor": "Pinecone",
+   "name": "Pinecone",
+   "category": "embedding",
+   "domains": [
+    "pinecone.io"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "weaviate-cloud",
+   "vendor": "Weaviate",
+   "name": "Weaviate Cloud",
+   "category": "embedding",
+   "domains": [
+    "weaviate.cloud",
+    "weaviate.network"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "qdrant-cloud",
+   "vendor": "Qdrant",
+   "name": "Qdrant Cloud",
+   "category": "embedding",
+   "domains": [
+    "cloud.qdrant.io"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "nomic",
+   "vendor": "Nomic AI",
+   "name": "Nomic Atlas / Embed",
+   "category": "embedding",
+   "domains": [
+    "nomic.ai"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "mixedbread",
+   "vendor": "Mixedbread",
+   "name": "Mixedbread",
+   "category": "embedding",
+   "domains": [
+    "mixedbread.ai",
+    "mixedbread.com"
+   ],
+   "api_endpoints": [],
+   "headers": [],
+   "user_agents": [],
+   "payload_keys": [],
+   "data_retention_policy": null,
+   "trains_on_customer_data": null,
+   "hosting_region": "unknown",
+   "ojk_approval_ref": null,
+   "certifications": [],
+   "risk_tier": null
+  },
+  {
+   "id": "zilliz",
+   "vendor": "Zilliz",
+   "name": "Zilliz Cloud",
+   "category": "embedding",
+   "domains": [
+    "zilliz.com"
    ],
    "api_endpoints": [],
    "headers": [],

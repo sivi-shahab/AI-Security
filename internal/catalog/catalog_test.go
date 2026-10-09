@@ -208,7 +208,8 @@ func TestCatalogStore(t *testing.T) {
 	}
 	rel, _ := ls.Latest(ctx)
 	cat := rel.Data["aisec.catalog"].(map[string]any)
-	if cat["version"] != float64(1) || cat["apps"].(map[string]any)["deepseek"].(map[string]any)["region"] != "CN" {
+	seed, _ := ParseFeed(seedFeed)
+	if cat["version"] != float64(seed.Version) || cat["apps"].(map[string]any)["deepseek"].(map[string]any)["region"] != "CN" {
 		t.Fatalf("seed release catalog: %v", cat)
 	}
 	if rs, _ := ls.Releases(ctx, 10); len(rs) != 2 { // lifecycle seed + catalog seed, once
@@ -239,11 +240,11 @@ func TestCatalogStore(t *testing.T) {
 
 	// Ticket AC: feeds without a valid signature are refused (and recorded); stale ones too.
 	k, pub := keys(t)
-	raw := feed(2, append(seedApps(t), app("newai", "SG"))...)
+	raw := feed(seed.Version+1, append(seedApps(t), app("newai", "SG"))...)
 	if _, err := s.ImportSigned(ctx, "secadmin", raw, sign(k, raw[:len(raw)-1]), pub); !errors.Is(err, ErrSignature) {
 		t.Errorf("bad signature: %v", err)
 	}
-	if v, err := s.ImportSigned(ctx, "secadmin", raw, sign(k, raw), pub); err != nil || v != 2 {
+	if v, err := s.ImportSigned(ctx, "secadmin", raw, sign(k, raw), pub); err != nil || v != seed.Version+1 {
 		t.Fatalf("import: %d %v", v, err)
 	}
 	if _, err := s.ImportSigned(ctx, "secadmin", raw, sign(k, raw), pub); !errors.Is(err, ErrStale) {
