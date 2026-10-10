@@ -49,5 +49,8 @@ var injectionRules = []rule{
 	inj("tool_steering", []string{"send", "transfer", "forward", "wire", "email", "kirim", "teruskan"},
 		`(?:send|transfer|forward|wire|email|kirim(?:kan)?|transfer(?:kan)?|teruskan)\b(?:[^.\n]|\.\d){0,60}?\b(?:to|ke|kepada)\s+(?:this|the following|berikut|rekening|account|address|alamat|[\w.+-]+@[\w-]+\.)`, 0.35),
 	inj("exfil_link", []string{"!["}, `!\[[^\]\n]{0,100}\]\(\s*https?://[^)\s]+\?[^)\s]*=[^)\s]*\)`, 0.6),
+	// A plain markdown link whose query is a placeholder (UPPER_SNAKE or {template}) for the model to fill in: the
+	// ticket-10 companion to the image rule. Ordinary links with real query values stay quiet.
+	inj("exfil_link", []string{"]("}, `\]\(\s*https?://[^)\s]+\?[^)\s]*=(?-i:[A-Z][A-Z0-9_]{3,}|\{[^}\s]{1,40}\})`, 0.6),
 	inj("exfil_link", []string{"<img"}, `<img\b[^>]{0,200}\bsrc\s*=\s*["']?https?://[^"'\s>]+\?[^"'\s>]*=`, 0.6),
 }

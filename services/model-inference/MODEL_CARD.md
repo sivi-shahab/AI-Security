@@ -4,6 +4,25 @@ One model per release, served by model-inference on CPU (ONNX Runtime, int8) and
 hard timeout with L1 as fallback. Version and artifact hash ship in every response (`l2.model`, e.g.
 `pii-ner-1+3f2a…`). Pinned artifacts: `MODELS.json`.
 
+## l2-1 (ticket 10): NER + prompt injection, one forward pass (served)
+
+| | |
+|---|---|
+| Tasks | the pii-ner-1 token head, retrained jointly, plus a sequence head: P(injection) and attack types `direct`, `indirect`, `role_confusion`, `exfil_markdown`, `suffix` |
+| Base | as pii-ner-1 (3 layers, frozen word embeddings) |
+| Injection score | Platt scaling over [sequence logit, character-trigram perplexity of the last 8 KB] fitted on a dev split; the perplexity feature is the FR-PSEC-4 suffix signal |
+| Views | detection-svc sends the normalized text and every decoded layer (base64, hex, URL, Unicode tags) besides the original; the worst view counts (FR-PSEC-3) |
+| Untrusted content | `trust=untrusted` (RAG, tool results, e-mail, web) scores max(P(injection), P(indirect type)) (FR-PSEC-2) |
+| Attack types | raw sigmoids, reported ≥ 0.5; not calibrated |
+| Training data | train.jsonl (synthetic, train-only templates and attack phrasings; GCG suffix vocabulary disjoint from the holdout) + public sets with permissive licences, train splits only (MODELS.json) |
+| Quantization | as pii-ner-1; token agreement measured on texts with NER supervision (0.9931), attack decision 1.0 |
+
+Limitations
+- Benign FPR on the holdout is above the 1% target at every policy threshold (1.36% at 0.9, 3.9% at 0.5), and the
+  score's ECE is 0.090: the public training sets do not look like bank prompts.
+- Weak on roleplay/persona jailbreaks and URL-encoded or tag-smuggled payloads when L1 does not decode them first.
+- Joint training costs NER calibration: entity ECE 0.076 (pii-ner-1 alone: 0.032).
+
 ## pii-ner-1 (ticket 09)
 
 | | |
@@ -35,8 +54,10 @@ Limitations
 ```sh
 sh services/model-inference/train/data.sh                       # Go: training data + holdout NER gold
 docker build -t aisec-train -f services/model-inference/train/Dockerfile services/model-inference
+python3 services/model-inference/train/fetch_public.py                 # l2-1 only: public sets, pinned and hashed
 docker run --rm -v $PWD:/repo -w /repo/services/model-inference/train aisec-train \
-  python train.py --tasks ner --epochs 2 --version pii-ner-1 --out /repo/services/model-inference/models/ner
-docker run -d -p 8080:8080 -e MODEL_DIR=/m -v $PWD/services/model-inference/models/ner:/m:ro model-inference
+  python train.py --tasks ner,injection --epochs 1 --version l2-1 --out /repo/services/model-inference/models/l2
+# (pii-ner-1: --tasks ner --epochs 2). A refused int8 build is retried without retraining: train.py --requantize
+docker run -d -p 8080:8080 -e MODEL_DIR=/m -v $PWD/services/model-inference/models/l2:/m:ro model-inference
 go run ./cmd/evalcorpus l2eval -dir data/eval/v1 -url http://localhost:8080 -threshold 0.5
 ```

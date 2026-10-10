@@ -239,3 +239,13 @@ func TestTrainingDisjoint(t *testing.T) {
 		t.Errorf("kinds %v", kinds)
 	}
 }
+
+func TestECE(t *testing.T) {
+	// 0.75 confidence, right 3 of 4 times: calibrated. 0.95 confidence, right half the time: off by 0.45.
+	if e := ECE([]float64{0.75, 0.75, 0.75, 0.75}, []bool{true, true, true, false}, 10); math.Abs(e) > 1e-9 {
+		t.Errorf("calibrated: %v", e)
+	}
+	if e := ECE([]float64{0.95, 0.95, 0.75, 0.75, 0.75, 0.75}, []bool{true, false, true, true, true, false}, 10); math.Abs(e-2.0/6*0.45) > 1e-9 {
+		t.Errorf("overconfident bin: %v", e)
+	}
+}

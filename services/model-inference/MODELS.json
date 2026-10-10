@@ -1,6 +1,29 @@
 {
- "note": "Released L2 models. Artifacts live in the model store (PVC model-store), never in git; the release job copies a model directory there only if every file matches its sha256 here. Reproduce: MODEL_CARD.md.",
+ "note": "Released L2 models; serve is the one deploy/base mounts at /models/l2. Artifacts live in the model store (PVC model-store), never in git; the release job copies a model directory there only if every file matches its sha256 here. Reproduce: MODEL_CARD.md.",
+ "serve": "l2-1",
  "models": {
+  "l2-1": {
+   "ticket": "10",
+   "tasks": ["ner", "injection"],
+   "rollout": "shadow",
+   "files": {
+    "model.onnx": "00aa79ee3764b678a648eb12aa1df7c7b01fc4c3da7e9844fa0a411a546daf62",
+    "tokenizer.json": "68376ce5e989db0c0bdb282422a99e12e449c1f97a1a18daf705626db0d57b83",
+    "trigram.json": "4dd1347930fe19e7db440baaa4a515e738254cbbee6d6954a0cccb05e6079758",
+    "model.json": "878524bec11cd940bce5c94754fe1cbcc57ea0051cf713ff936fd8b7a363dbe1"
+   },
+   "version_hash": "e4218610f77ec2ed2ec4a4b511acfa762cda81d2f8c6ea593515b62330dd142b",
+   "base": {"model": "distilbert/distilbert-base-multilingual-cased", "revision": "45c032ab32cc946ad88a166f7cb282f58c753c2e", "license": "Apache-2.0", "layers_used": 3},
+   "training_data": [
+    {"name": "train.jsonl", "source": "evalcorpus train -seed 7 -n 3000 (evalcorpus-train/1, train-only templates)", "license": "internal (synthetic)", "sha256": "4e543e87689e2383d591925e1834bf537bd4b1994632a50158f279067f20d8f5"},
+    {"name": "public.jsonl", "source": "train/fetch_public.py", "sha256": "2fcd513f6bec8f3e7f545608e2cfa03b537221f16c6081f2f66be5e3666ba4ef", "parts": [
+     {"dataset": "deepset/prompt-injections", "split": "train", "license": "Apache-2.0", "revision": "4f61ecb038e9c3fb77e21034b22511b523772cdd", "rows": 546},
+     {"dataset": "jackhhao/jailbreak-classification", "split": "train", "license": "Apache-2.0", "revision": "2f2ceeb39658696fd3f462403562b6eea5306287", "rows": 1044},
+     {"dataset": "reshabhs/SPML_Chatbot_Prompt_Injection", "split": "train", "license": "MIT", "revision": "02ce8084e979bc7d4c24ee35d22ecb7f2db96ff5", "rows": 4000},
+     {"dataset": "cahya/alpaca-id-cleaned", "split": "train", "license": "CC-BY-4.0", "revision": "0347095e70b030151f099f361740d51f26a0fdff", "rows": 3000}
+    ]}
+   ]
+  },
   "pii-ner-1": {
    "ticket": "09",
    "tasks": ["ner"],

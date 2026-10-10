@@ -18,7 +18,7 @@ Entitas tanpa pola tetap (nama, alamat, diagnosis) butuh model NER.
 
 ## Acceptance criteria
 - [x] F1 per entitas dilaporkan; ECE ≤ 0,05. *(`evalcorpus l2eval` pada holdout v1, model int8 yang di-serve: ECE confidence entitas 0,032 (1.572 entitas). F1 L2 per entitas di tabel bawah. Nama dan alamat dinilai dengan gold yang diturunkan dari replay generator holdout (`evalcorpus nergold`, `TestPIIFull`), tanpa mengubah holdout.)*
-- [ ] p95 L2 ≤ 50 ms (bersama classifier injection). *(Belum: p95 62 ms, p50 31 ms, diukur klien → model-inference (`--cpus 2`, `ORT_THREADS=2`) saat host sedang dipakai training lain (load 12–20 di 16 core). Pengukuran bersama classifier injection ada di tiket 10.)*
+- [x] p95 L2 ≤ 50 ms (bersama classifier injection). *(Model gabungan `l2-1` (tiket 10, NER + injection dalam satu forward pass): p95 35 ms, p50 18 ms, p99 86 ms untuk 1.810 teks holdout, diukur klien → model-inference (`--cpus 2`, `ORT_THREADS=2`) saat host tenang. Saat host dipakai training lain, pii-ner-1 sempat terukur p95 62 ms.)*
 - [x] Model dirilis lewat shadow mode dulu. *(`L2_MODE` default `shadow`, juga di `deploy/base/services.yaml`: temuan L2 dilaporkan di `l2` respons `/scan/text`, hasil tidak berubah. `enforce` menggabungkannya (`TestShadowEnforceFallback`).)*
 
 Hasil holdout v1 (`pii-ner-1+46960d7d86e0`, ambang 0,5):
@@ -49,7 +49,8 @@ Hasil holdout v1 (`pii-ner-1+46960d7d86e0`, ambang 0,5):
 - Image model-inference distroless dibangun dan jalan (`/healthz`, `/readyz` 503 tanpa model).
 
 ## Sisa
-- p95 ≤ 50 ms belum terbukti (62 ms di host yang sibuk). Ukur ulang di node yang tidak berbagi CPU; opsi: 2 layer, batch per request, atau thread lebih banyak.
+- Yang di-serve adalah `l2-1` (tiket 10), yang kalibrasi NER-nya lebih buruk dari pii-ner-1: ECE entitas 0,076 vs 0,032, F1 nama 0,854 vs 0,873. Sebelum enforce perlu kalibrasi ulang, atau memisahkan model NER dari injection dengan biaya latensi dua forward pass.
+- p99 86 ms > timeout 80 ms: ~1% panggilan jatuh ke L1 saja. Ukur di node produksi.
 - NIK vs KK belum lebih baik dari L1 (KK recall 0,66). Perlu data training dengan konteks KK yang lebih bervariasi, atau aturan konteks L1.
 - `PHI.DIAGNOSIS` dilatih tapi tidak terukur: holdout v1 tidak punya diagnosis. Butuh eval set v2 dengan dokumen kesehatan (label ganda κ ≥ 0,8).
 - Semua data (train dan holdout) sintetis: angka ini batas atas untuk produksi. Eval pada dokumen nyata yang sudah di-redact (active learning, tiket 38) sebelum pindah ke enforce.

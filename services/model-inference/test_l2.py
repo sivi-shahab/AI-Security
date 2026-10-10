@@ -3,6 +3,7 @@ import os
 import unittest
 
 import app
+import numpy as np
 import l2
 
 NAMES = ["O", "B-PII.NAME", "I-PII.NAME", "B-PII_ID.NIK", "I-PII_ID.NIK"]
@@ -35,6 +36,36 @@ class DecodeTest(unittest.TestCase):
         ]
         self.assertEqual(
             l2.merge(found), [("PII.NAME", 10, 22, 0.9), ("PII_ID.NIK", 30, 46, 0.8)]
+        )
+
+
+class InjectionTest(unittest.TestCase):
+    """The worst view counts; untrusted content also counts an instruction aimed at the AI (indirect type)."""
+
+    def model(self, logits):
+        m = l2.Model.__new__(l2.Model)
+        m.version, m.tasks = "t", ["injection"]
+        m.meta = {
+            "injection": {
+                "types": ["direct", "indirect"],
+                "feature_mean": [0.0, 0.0],
+                "feature_std": [1.0, 1.0],
+                "weights": [1.0, 0.0],
+                "bias": 0.0,
+            }
+        }
+        m.lm = l2.TrigramLM({"tri": {}, "ctx": {}, "v": 300})
+        m._run = lambda text: (None, None, np.array([logits[text]]))
+        return m
+
+    def test_views_and_trust(self):
+        m = self.model({"plain": [-4.0, -9.0, 2.0], "decoded": [3.0, 0.0, -9.0]})
+        self.assertLess(m.analyze("plain")["injection"]["score"], 0.05)
+        r = m.analyze("plain", ["decoded"])["injection"]
+        self.assertGreater(r["score"], 0.9)
+        self.assertEqual(r["types"], ["direct"])
+        self.assertGreater(
+            m.analyze("plain", trust="untrusted")["injection"]["score"], 0.85
         )
 
 
