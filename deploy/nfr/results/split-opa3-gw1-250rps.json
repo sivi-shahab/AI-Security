@@ -1,0 +1,1 @@
+{"label":"split-opa3-gw1-250rps","requests":7447,"codes":{"200":6711,"dropped":736},"achieved_rps":223.7,"P50":951.889,"P95":1481.443,"P99":1766.513,"Max":2317.302}

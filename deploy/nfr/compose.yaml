@@ -1,0 +1,95 @@
+# Ticket 21 NFR harness (docs/nfr/m1-report.md). From the repo root:
+#   deploy/nfr/run.sh up      build images, the signed bundle, start everything
+# One "pod" = ai-gateway (3 vCPU) + its OPA sidecar (1 vCPU) sharing a network namespace: 4 vCPU as in spec §13.1.
+# Dev/insecure flags only where the services provide them for local use (plaintext Kafka/OpenSearch).
+name: t21
+services:
+  mock:
+    container_name: t21-mock
+    image: gcr.io/distroless/static-debian12:nonroot
+    volumes: ["./.bin:/bin-nfr:ro"]
+    entrypoint: ["/bin-nfr/nfr", "mock"]
+    cpus: 4
+    ports: ["19000:9000"]
+  bundles:
+    container_name: t21-bundles
+    image: gcr.io/distroless/static-debian12:nonroot
+    volumes: ["./.bin:/bin-nfr:ro", "./.bundle:/bundle:ro"]
+    entrypoint: ["/bin-nfr/nfr", "files", "-dir", "/bundle"]
+  ai-gateway:
+    container_name: t21-ai-gateway
+    image: t21-ai-gateway
+    restart: on-failure
+    cpus: 3
+    ports: ["18080:8080"]
+    volumes: ["./config:/config:ro"]
+    environment:
+      AIGW_CONFIG_FILE: /config/aigw.json
+      TENANT_ID: 6f1c1d1e-2a7b-4c3d-9e8f-0a1b2c3d4e5f
+      TENANT_PEPPER: nfr-harness-pepper-0123456789abcdef
+      KAFKA_BROKERS: t21-kafka:9092
+      KAFKA_PLAINTEXT: "true"
+      SCHEMA_REGISTRY_URL: http://t21-karapace:8081
+      REDIS_URL: redis://t21-redis:6379/0
+    depends_on: [karapace, redis, mock]
+  opa:
+    container_name: t21-opa
+    image: openpolicyagent/opa:1.21.1-static
+    restart: on-failure
+    network_mode: "service:ai-gateway"
+    user: "0:0"  # harness only: the named volume is root-owned (k8s mounts an emptyDir writable by 65532)
+    cpus: 1
+    volumes: ["./config:/config:ro", "./.bundle:/keys:ro", "opa-cache:/var/opa"]
+    command: [run, --server, --addr=127.0.0.1:8181, --diagnostic-addr=:8282, --config-file=/config/opa.yaml,
+      "--set-file=keys.aisec-policy-a.key=/keys/aisec-policy-a.pub", --optimize-store-for-read-speed]
+  detection-svc:
+    container_name: t21-detection-svc
+    image: t21-detection-svc
+    cpus: 2
+    ports: ["18081:8080"]
+    environment: {MTLS_INSECURE: "true"}
+  event-ingest:
+    container_name: t21-event-ingest
+    image: t21-event-ingest
+    restart: on-failure
+    environment:
+      KAFKA_BROKERS: t21-kafka:9092
+      KAFKA_PLAINTEXT: "true"
+      SCHEMA_REGISTRY_URL: http://t21-karapace:8081
+      OPENSEARCH_URL: http://t21-os:9200
+      OPENSEARCH_PLAINTEXT: "true"
+    depends_on: [karapace, opensearch]
+  kafka:
+    container_name: t21-kafka
+    image: apache/kafka:3.9.0
+    environment:
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://t21-kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@t21-kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+  karapace:
+    container_name: t21-karapace
+    image: ghcr.io/aiven-open/karapace:5.0.3
+    command: [python3, -m, karapace]
+    environment: {KARAPACE_BOOTSTRAP_URI: "t21-kafka:9092", KARAPACE_HOST: 0.0.0.0, KARAPACE_PORT: "8081", KARAPACE_REPLICATION_FACTOR: "1"}
+    depends_on: [kafka]
+  redis:
+    container_name: t21-redis
+    image: redis:8
+  opensearch:
+    container_name: t21-os
+    image: opensearchproject/opensearch:2.19.3
+    ports: ["19200:9200"]
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "true"
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      OPENSEARCH_JAVA_OPTS: -Xms1g -Xmx1g
+volumes:
+  opa-cache:

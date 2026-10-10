@@ -1,0 +1,13 @@
+baseline closed: codes={"200":599} rps=29.95 p95_ms=25.67 p99_ms=31.983
+baseline open:   codes={"200":599} rps=29.95 p95_ms=25.503 p99_ms=33.585
+opa down closed: codes={"503":899} rps=0 p95_ms=0 p99_ms=0
+opa down open:   codes={"200":899} rps=29.966666666666665 p95_ms=11.145 p99_ms=11.971  fail_open_total +1798
+opa back closed: codes={"200":449} rps=29.933333333333334 p95_ms=23.34 p99_ms=27.246
+opa restarted without policy service: serving after 1 s; 0 disk-load log line(s)
+opa cached closed: codes={"200":449} rps=29.933333333333334 p95_ms=20.144 p99_ms=24.016
+kafka down closed: codes={"dropped":643,"error":256} rps=0 p95_ms=0 p99_ms=0  event errors logged: 0
+kafka down open:   codes={"dropped":643,"error":256} rps=0 p95_ms=0 p99_ms=0
+kafka back closed: codes={"200":449} rps=29.933333333333334 p95_ms=27.844 p99_ms=42.047
+redis down closed: codes={"200":899} rps=29.966666666666665 p95_ms=416.247 p99_ms=440.483  counter errors logged: 7192
+redis back closed: codes={"200":449} rps=29.933333333333334 p95_ms=27.152 p99_ms=30.888
+detection-svc down closed: codes={"200":899} rps=29.966666666666665 p95_ms=24.389 p99_ms=29.935

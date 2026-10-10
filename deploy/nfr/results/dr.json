@@ -1,0 +1,2 @@
+{"postgres": {"rpo_seconds": 45.2, "rto_seconds": 20.9, "rows_recovered": 775, "wal_objects": 7},
+ "object_storage": {"restore_seconds": 6.8, "worm_delete_refused": true, "content_identical": true, "retention_on_restored": true}}

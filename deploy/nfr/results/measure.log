@@ -1,0 +1,18 @@
+== direct-1000tok-100rps
+{"label":"direct-1000tok-100rps","requests":5999,"codes":{"200":5999},"achieved_rps":99.98333333333333,"P50":1.355,"P95":1.707,"P99":1.904,"Max":4.688}
+== gateway-1000tok-100rps
+{"label":"gateway-1000tok-100rps","requests":5999,"codes":{"200":1933,"503":4066},"achieved_rps":32.21666666666667,"P50":825.156,"P95":2827.781,"P99":3475.412,"Max":3964.066}
+== direct-8000tok-100rps
+{"label":"direct-8000tok-100rps","requests":5999,"codes":{"200":5999},"achieved_rps":99.98333333333333,"P50":1.667,"P95":2.321,"P99":2.815,"Max":3.977}
+== gateway-8000tok-100rps
+{"label":"gateway-8000tok-100rps","requests":5996,"codes":{"200":3422,"503":2574},"achieved_rps":57.03333333333333,"P50":927.503,"P95":2687.448,"P99":3445.837,"Max":3944.826}
+== gateway-1000tok-closed-c64
+{"label":"gateway-1000tok-closed-c64","requests":5504,"codes":{"200":5429,"503":75},"achieved_rps":90.48333333333333,"P50":535.071,"P95":1798.014,"P99":2392.685,"Max":3588.578}
+== gateway-1000tok-closed-c128
+{"label":"gateway-1000tok-closed-c128","requests":5757,"codes":{"200":4359,"503":1398},"achieved_rps":72.65,"P50":912.5,"P95":2607.186,"P99":3364.135,"Max":3860.571}
+== direct-stream-20x5ms
+{"label":"direct-stream-20x5ms","requests":1199,"codes":{"200":1199},"achieved_rps":19.983333333333334,"P50":122.165,"P95":123.793,"P99":124.668,"Max":129.048}
+== gateway-stream-20x5ms
+{"label":"gateway-stream-20x5ms","requests":1199,"codes":{"200":1199},"achieved_rps":19.983333333333334,"P50":136.593,"P95":141.452,"P99":143.683,"Max":160.739}
+== events
+{"events":200,"found":200,"max_s":5.127638474,"missing":0,"p50_s":2.554883577,"p95_s":4.849763843}

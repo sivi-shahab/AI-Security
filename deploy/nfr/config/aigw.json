@@ -1,0 +1,12 @@
+{
+  "apps": [
+    {"id": "nfr-closed", "key_sha256": "71a412b026a7772da395db07b8a01d441518cb78e0db948648bc385ef594394b", "providers": ["openai"],
+     "fail_mode": "fail_closed", "rpm": 100000000, "user_rpm": 100000000, "tokens_per_day": 100000000000, "user_tokens_per_day": 100000000000},
+    {"id": "nfr-open", "key_sha256": "7c82e5aa0d3afc373800654797738baa5df1828d56c3fa04d6638da1939b1fa3", "providers": ["openai"],
+     "fail_mode": "fail_open", "rpm": 100000000, "user_rpm": 100000000, "tokens_per_day": 100000000000, "user_tokens_per_day": 100000000000}
+  ],
+  "providers": [
+    {"name": "openai", "kind": "openai", "upstream": "http://t21-mock:9000", "key_file": "/config/provider.key",
+     "app_id": "chatgpt", "sanction": "sanctioned", "region": "US"}
+  ]
+}

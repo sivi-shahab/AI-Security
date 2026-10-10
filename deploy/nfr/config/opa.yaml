@@ -1,0 +1,19 @@
+# Harness OPA config: the same bundle settings as deploy/base/opa/opa.yaml (signature verified, last bundle
+# persisted), but the bundle comes over plain HTTP from the harness file server (no SPIFFE in docker compose).
+services:
+  policy:
+    url: http://t21-bundles:8000
+bundles:
+  aisec:
+    service: policy
+    resource: aisec.tar.gz
+    persist: true
+    signing:
+      exclude_files: []
+    polling:
+      min_delay_seconds: 10
+      max_delay_seconds: 20
+keys:
+  aisec-policy-a:
+    algorithm: ES256
+persistence_directory: /var/opa

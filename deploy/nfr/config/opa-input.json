@@ -1,0 +1,8 @@
+{
+  "channel": "ai_gateway",
+  "direction": "request",
+  "principal": {"type": "user", "id": "8f14e45fceea167a5a36dedd4bea2543a1b1c1c8f6e0b0f0e0d0c0b0a0908070"},
+  "destination": {"app_id": "chatgpt", "sanction": "sanctioned", "region": "US"},
+  "content": {"sensitivity": "confidential", "classes": [{"type": "PII_ID.NIK", "count": 1, "confidence": 0.97}],
+    "injection_score": 0.12, "tokens": 1000}
+}

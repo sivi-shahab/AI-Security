@@ -1,0 +1,3 @@
+{"5mb":  {"input_mb":5.121054649353027,"l1_findings":2804,"max_ms":378,"p50_ms":307,"p95_ms":378,"runs":20},
+ "49mb": {"input_mb":49.10942077636719,"l1_findings":2804,"max_ms":366,"p50_ms":318,"p95_ms":366,"runs":5},
+ "note": "deploy/nfr/.bin/nfr filescan -mb 5 -n 20 / -mb 49 -n 5, docker --cpus=4; same findings: extract.Default.MaxText (2 MiB) cuts the text the detectors see"}
