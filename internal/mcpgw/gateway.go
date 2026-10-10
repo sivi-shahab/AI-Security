@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -80,6 +81,7 @@ type Gateway struct {
 
 	mu    sync.Mutex
 	taint map[string]taint
+	srcs  map[string]sources
 	rates map[string]window
 	seen  map[string]string // "server/tool" → hash of the definition last served in tools/list
 
@@ -143,8 +145,9 @@ type call struct {
 }
 
 type toolEntry struct {
-	Risk   string
-	Scopes map[string]any
+	Risk         string
+	Scopes       map[string]any
+	WritesMemory bool
 }
 
 // pending is the request a response answers: which tool, or a resource read.
@@ -185,7 +188,7 @@ func (g *Gateway) serve(w http.ResponseWriter, r *http.Request) {
 	if reg != nil {
 		c.agentID = reg.ID
 		for _, t := range reg.Tools {
-			c.tools[t.Name] = &toolEntry{t.Risk, t.Scopes}
+			c.tools[t.Name] = &toolEntry{t.Risk, t.Scopes, t.WritesMemory}
 		}
 	}
 	// A killed agent or app gets nothing through, not even tools/list: its token is as good as revoked.
@@ -390,6 +393,7 @@ func (c *call) toolCall(ctx context.Context, msg *message) ([]byte, *message) {
 	limit := c.g.DefaultRate
 	if t != nil {
 		agent["tool_risk"] = t.Risk
+		agent["writes_memory"] = t.WritesMemory
 		agent["scope_violations"] = len(toolscope.Violations(t.Scopes, args))
 		limit = toolscope.RatePerMinute(t.Scopes, limit)
 	}
@@ -491,6 +495,9 @@ func (c *call) inspectPayload(ctx context.Context, b []byte, pend *pending) []by
 		agent["tool_risk"] = t.Risk
 	}
 	d, eid, err := c.decide(ctx, "tool_result", tool, in, agent)
+	if err == nil && tool != "" && (d.Action == "allow" || d.Action == "warn" || d.Action == "redact" || d.Action == "tokenize") {
+		c.g.addSource(c.taintKey, c.srv.Name+"/"+tool) // the agent sees it: provenance of what it writes to memory next
+	}
 	switch {
 	case err != nil:
 		return mustJSON(rpcError(msg.ID, "policy unavailable", nil))
@@ -577,6 +584,13 @@ func (c *call) decide(ctx context.Context, direction, tool string, in *inspect.C
 	e.MCPServer, _ = agent["mcp_server"].(string)
 	if direction == "tool_call" {
 		e.ApprovalID = c.approvalID
+	}
+	// FR-AGT-9 provenance of a memory write: agent and trace are on every event; add where its content can come from.
+	if wm, _ := agent["writes_memory"].(bool); wm && direction == "tool_call" {
+		e.MemoryWrite, e.ContentOrigin, e.ContentSources = &wm, "user", g.sourcesOf(c.taintKey)
+		if len(e.ContentSources) > 0 {
+			e.ContentOrigin = "tool_result"
+		}
 	}
 	e.ToolHash, _ = agent["tool_hash"].(string)
 	e.BehaviorAnomalies, _ = agent["behavior_anomalies"].([]string)
@@ -784,6 +798,12 @@ type taint struct {
 	at  time.Time
 }
 
+// sources: the tool outputs a session read (server/tool), for memory-write provenance; same TTL as taint.
+type sources struct {
+	list []string
+	at   time.Time
+}
+
 type window struct {
 	start time.Time
 	n     int
@@ -813,6 +833,32 @@ func (g *Gateway) addTaint(key string, score float64) {
 		t.max = 0
 	}
 	g.taint[key] = taint{max(t.max, score), now}
+}
+
+func (g *Gateway) addSource(key, src string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	now := g.Now()
+	if g.srcs == nil || len(g.srcs) > 100000 {
+		g.srcs = map[string]sources{}
+	}
+	s := g.srcs[key]
+	if now.Sub(s.at) >= taintTTL {
+		s.list = nil
+	}
+	if !slices.Contains(s.list, src) && len(s.list) < 32 {
+		s.list = append(s.list, src)
+	}
+	g.srcs[key] = sources{s.list, now}
+}
+
+func (g *Gateway) sourcesOf(key string) []string {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if s, ok := g.srcs[key]; ok && g.Now().Sub(s.at) < taintTTL {
+		return slices.Clone(s.list)
+	}
+	return nil
 }
 
 func (g *Gateway) overRate(key string, limit int) bool {

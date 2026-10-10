@@ -74,7 +74,10 @@ type Event struct {
 	BehaviorAnomalies   []string `json:"behavior_anomalies,omitempty"`
 	MCPServer           string   `json:"mcp_server,omitempty"`
 	ToolHash            string   `json:"tool_hash,omitempty"`
-	ApprovalID          string   `json:"approval_id,omitempty"` // the human approval this call used (FR-AGT-6)
+	ApprovalID          string   `json:"approval_id,omitempty"`     // the human approval this call used (FR-AGT-6)
+	MemoryWrite         *bool    `json:"memory_write,omitempty"`    // FR-AGT-9 provenance of memory writes
+	ContentOrigin       string   `json:"content_origin,omitempty"`  // user | tool_result
+	ContentSources      []string `json:"content_sources,omitempty"` // server/tool outputs the session read before
 }
 
 // PDPInput rebuilds the canonical PDP input (policy/aisec/schema) from the event's metadata. ok is false when the
@@ -152,6 +155,7 @@ func (e Event) PDPInput() (in map[string]any, ok bool) {
 		if e.ApprovalID != "" {
 			agent["approval_granted"] = true
 		}
+		put(agent, "writes_memory", e.MemoryWrite)
 		in["agent"] = agent
 	}
 	return in, true

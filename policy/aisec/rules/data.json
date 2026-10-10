@@ -89,6 +89,28 @@
       "reason": "INJECTION_THEN_HIGH_TOOL"
     },
     {
+      "id": "tpl.memory-write-injection",
+      "description": "FR-AGT-9, OWASP ASI06: tulis ke memory agent / vector store berisi injection >= 0.5 = block. Yang tersimpan dibaca ulang sesi lain sebagai konteks tepercaya, jadi ambangnya lebih rendah dari tpl.injection-high.",
+      "when": [
+        {"field": "direction", "op": "eq", "value": "tool_call"},
+        {"field": "agent.writes_memory", "op": "eq", "value": true},
+        {"field": "content.injection_score", "op": "gte", "value": 0.5}
+      ],
+      "action": "block",
+      "reason": "MEMORY_POISONING"
+    },
+    {
+      "id": "tpl.memory-write-tainted",
+      "description": "FR-AGT-9: sesi yang sudah melihat injection >= 0.5 menulis ke memory = require_approval (tanpa HITL = deny).",
+      "when": [
+        {"field": "direction", "op": "eq", "value": "tool_call"},
+        {"field": "agent.writes_memory", "op": "eq", "value": true},
+        {"field": "agent.session_injection_max", "op": "gte", "value": 0.5}
+      ],
+      "action": "require_approval",
+      "reason": "MEMORY_WRITE_TAINTED_SESSION"
+    },
+    {
       "id": "tpl.blocked-app",
       "description": "FR-DISC-4: app berstatus blocked di katalog = block (semua sensitivity, onshore maupun offshore).",
       "when": [

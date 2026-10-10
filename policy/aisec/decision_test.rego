@@ -483,3 +483,23 @@ test_containment_block if {
 	r5 := decision.result with input as base with data.aisec.containment.blocks as blocks with data.aisec.exceptions.items as ex
 	r5.action == "block"
 }
+
+# --- ticket 44: memory writes -------------------------------------------------------------------------------
+
+test_registry_decides_writes_memory if {
+	mem_agents := json.patch(agents, [{"op": "add", "path": "/items/invoice-bot/tools/-", "value": {"name": "kb.save", "risk": "medium", "writes_memory": true}}])
+	injected := {"sensitivity": "internal", "classes": [], "injection_score": 0.6}
+	# The PEP says "not a memory write"; the registry says it is.
+	w := decision.result with input as object.union(agent_call("invoice-bot", {"tool": "kb.save", "writes_memory": false}), {"content": injected})
+		with data.aisec.agents as mem_agents
+	w.action == "block"
+	"MEMORY_POISONING" in w.reason_codes
+	# The PEP says "memory write" for a tool the registry does not mark: no memory rule.
+	r := decision.result with input as object.union(agent_call("invoice-bot", {"writes_memory": true}), {"content": injected})
+		with data.aisec.agents as mem_agents
+	not "MEMORY_POISONING" in r.reason_codes
+	# A tainted session writing clean content: approval.
+	t := decision.result with input as agent_call("invoice-bot", {"tool": "kb.save", "session_injection_max": 0.6}) with data.aisec.agents as mem_agents
+	t.action == "require_approval"
+	t.reason_codes == ["MEMORY_WRITE_TAINTED_SESSION"]
+}

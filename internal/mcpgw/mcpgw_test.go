@@ -73,6 +73,9 @@ func registry() map[string]any {
 				"currency":  map[string]any{"in": []any{"IDR"}},
 			}),
 			tool("send_email", "high", map[string]any{"to": map[string]any{"in": []any{"boss@bank.co.id", "billing@supplier.co.id"}}}),
+			// Long-term memory (ticket 44): the registry marks the write tool.
+			map[string]any{"name": "save_memory", "risk": "medium", "writes_memory": true},
+			tool("recall_memory", "low", nil),
 		}},
 		"orphan-bot": map[string]any{"status": "quarantined", "risk_tier": "low", "identity": "orphan-client", "tools": []any{tool("read_inbox", "low", nil)}},
 	}}
@@ -92,13 +95,14 @@ type toolServer struct {
 	transfers []map[string]any
 	emails    []map[string]any
 	passwords []string
+	memory    []string // what save_memory stored; recall_memory returns it (shared by every session)
 }
 
 func (s *toolServer) reset(docs map[string]string, sse bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.docs, s.sse, s.hostile = docs, sse, nil
-	s.requests, s.bodies, s.transfers, s.emails, s.passwords = nil, nil, nil, nil, nil
+	s.requests, s.bodies, s.transfers, s.emails, s.passwords, s.memory = nil, nil, nil, nil, nil, nil
 }
 
 func (s *toolServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -158,6 +162,11 @@ func (s *toolServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case "send_email":
 			s.emails = append(s.emails, a)
 			result = text("email sent")
+		case "save_memory":
+			s.memory = append(s.memory, fmt.Sprint(a["text"]))
+			result = text("saved")
+		case "recall_memory":
+			result = text(strings.Join(s.memory, "\n"))
 		case "update_password":
 			s.passwords = append(s.passwords, fmt.Sprint(a["password"]))
 			result = text("password changed")

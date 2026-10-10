@@ -39,6 +39,9 @@ type Tool struct {
 	Name   string         `json:"name"`
 	Risk   string         `json:"risk"` // low | medium | high
 	Scopes map[string]any `json:"scopes,omitempty"`
+	// WritesMemory: the tool writes the agent's long-term memory or a vector store (FR-AGT-9); the gateway holds
+	// such writes to stricter injection rules and records their provenance.
+	WritesMemory bool `json:"writes_memory,omitempty"`
 }
 
 // Identity is the agent's workload identity (FR-AGT-2). Shared user credentials are refused.

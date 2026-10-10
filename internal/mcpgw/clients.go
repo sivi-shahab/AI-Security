@@ -193,9 +193,10 @@ type RegistryAgent struct {
 	ID     string `json:"agent_id"`
 	Status string `json:"status"`
 	Tools  []struct {
-		Name   string         `json:"name"`
-		Risk   string         `json:"risk"`
-		Scopes map[string]any `json:"scopes"`
+		Name         string         `json:"name"`
+		Risk         string         `json:"risk"`
+		Scopes       map[string]any `json:"scopes"`
+		WritesMemory bool           `json:"writes_memory"`
 	} `json:"tools"`
 }
 

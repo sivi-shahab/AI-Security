@@ -63,7 +63,8 @@ registry := {
 	"tool_approved": tool_approved, "killed": killed,
 }
 
-agent := object.union(object.union(input.agent, registry), {"tool_risk": tool.risk}) if {
+# The registry's tool entry also says whether the tool writes memory (FR-AGT-9): the PEP's claim does not count.
+agent := object.union(object.union(input.agent, registry), {"tool_risk": tool.risk, "writes_memory": object.get(tool, "writes_memory", false)}) if {
 	input.agent
 	tool
 } else := object.union(input.agent, registry) if input.agent

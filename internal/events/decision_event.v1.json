@@ -64,6 +64,9 @@
     "mcp_server": {"type": "string", "minLength": 1},
     "tool_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "approval_id": {"type": "string", "minLength": 1},
+    "memory_write": {"type": "boolean", "description": "The tool call writes agent memory or a vector store (FR-AGT-9)."},
+    "content_origin": {"enum": ["user", "tool_result"], "description": "Provenance of a memory write: only the agent's own input this session, or tool output it read."},
+    "content_sources": {"type": "array", "items": {"type": "string", "minLength": 1}, "description": "server/tool (or server/resources/read) outputs the session read before a memory write."},
     "snippet": {"type": "string", "maxLength": 200, "description": "Already redacted by the PEP, e.g. 'NIK [REDACTED:PII_ID.NIK]'."}
   }
 }

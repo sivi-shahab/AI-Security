@@ -51,6 +51,9 @@
         "mcp_server": {"type": "keyword"},
         "tool_hash": {"type": "keyword"},
         "approval_id": {"type": "keyword"},
+        "memory_write": {"type": "boolean"},
+        "content_origin": {"type": "keyword"},
+        "content_sources": {"type": "keyword"},
         "snippet": {"type": "text"}
       }
     }
