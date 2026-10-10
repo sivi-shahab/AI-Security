@@ -102,3 +102,23 @@ CREATE TABLE IF NOT EXISTS incident.tickets (
   url         text        NOT NULL,
   created_at  timestamptz NOT NULL
 );
+
+-- Ticket 45 ABAC: the business unit and region of the people involved (IdP groups bu:<unit>, region:<region>), and
+-- the most sensitive content seen. Unmask compares them with the analyst's binding attributes.
+ALTER TABLE incident.incidents ADD COLUMN IF NOT EXISTS business_unit text NOT NULL DEFAULT '';
+ALTER TABLE incident.incidents ADD COLUMN IF NOT EXISTS region        text NOT NULL DEFAULT '';
+ALTER TABLE incident.incidents ADD COLUMN IF NOT EXISTS sensitivity   text NOT NULL DEFAULT '';
+
+-- Four-eyes for restricted evidence: a second analyst approves one unmask by the requester, valid for an hour.
+CREATE TABLE IF NOT EXISTS incident.unmask_requests (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  incident_id   uuid        NOT NULL REFERENCES incident.incidents(id),
+  evidence_id   uuid        NOT NULL,
+  requester     text        NOT NULL,
+  justification text        NOT NULL,
+  created_at    timestamptz NOT NULL,
+  approver      text,
+  approved_at   timestamptz,
+  used_at       timestamptz
+);
+CREATE INDEX IF NOT EXISTS unmask_requests_incident ON incident.unmask_requests (incident_id, created_at);

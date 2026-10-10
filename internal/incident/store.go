@@ -130,8 +130,14 @@ func (s *Store) Ingest(ctx context.Context, e events.Event, raw []byte, now time
 				return err
 			}
 		}
+		// ABAC attributes: the first unit/region seen sticks; sensitivity is the highest seen.
 		_, err = tx.Exec(ctx, `UPDATE incident.incidents SET event_count = event_count + 1, max_risk = greatest(max_risk, $2),
-			first_event_at = least(first_event_at, $3), last_event_at = greatest(last_event_at, $3) WHERE id = $1`, id, e.RiskScore, ts)
+			first_event_at = least(first_event_at, $3), last_event_at = greatest(last_event_at, $3),
+			business_unit = CASE WHEN business_unit = '' THEN $4 ELSE business_unit END,
+			region = CASE WHEN region = '' THEN $5 ELSE region END,
+			sensitivity = CASE WHEN coalesce(array_position($7::text[], $6::text), 0) > coalesce(array_position($7::text[], sensitivity), 0)
+			  THEN $6 ELSE sensitivity END
+			WHERE id = $1`, id, e.RiskScore, ts, groupAttr(e, "bu:"), groupAttr(e, "region:"), e.Sensitivity, authz.Sensitivities)
 		if err != nil {
 			return err
 		}
@@ -143,6 +149,17 @@ func (s *Store) Ingest(ctx context.Context, e events.Event, raw []byte, now time
 		return s.startBreach(ctx, tx, id, "auto", "system", fmt.Sprintf("event %s: personal data allowed to %s", e.EventID, e.AppID), now)
 	})
 	return id, created, err
+}
+
+// groupAttr is an ABAC attribute the event's principal carries as an IdP group "<prefix><value>" (bu:retail,
+// region:jakarta); "" when it has none, which leaves the incident unrestricted on that attribute.
+func groupAttr(e events.Event, prefix string) string {
+	for _, g := range e.PrincipalGroups {
+		if v, ok := strings.CutPrefix(g, prefix); ok && v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // chainTrace is the trace an event chains on; "" for a missing or all-zero trace id, which correlates nothing.
@@ -212,6 +229,9 @@ type Incident struct {
 	ResolvedAt     *time.Time `json:"resolved_at,omitempty"`
 	ClosedAt       *time.Time `json:"closed_at,omitempty"`
 	Breach         *Breach    `json:"breach,omitempty"`
+	BusinessUnit   string     `json:"business_unit,omitempty"`
+	Region         string     `json:"region,omitempty"`
+	Sensitivity    string     `json:"sensitivity,omitempty"` // the most sensitive content among its events
 }
 
 // Breach is the FR-INC-6 timer of an incident (UU PDP Pasal 46: notify within 3×24 hours).
@@ -227,7 +247,8 @@ type Breach struct {
 
 const incidentCols = `id, tenant_id::text, title, state, severity, max_risk, event_count, first_event_at, last_event_at, opened_at,
 	ack_deadline, acknowledged_at, resolved_at, closed_at,
-	breach_started_at, breach_deadline, coalesce(breach_basis, ''), breach_escalated_at, breach_drafted_at, breach_closed_at, coalesce(breach_outcome, '')`
+	breach_started_at, breach_deadline, coalesce(breach_basis, ''), breach_escalated_at, breach_drafted_at, breach_closed_at, coalesce(breach_outcome, ''),
+	business_unit, region, sensitivity`
 
 func scanIncident(row pgx.Row) (Incident, error) {
 	var i Incident
@@ -235,7 +256,8 @@ func scanIncident(row pgx.Row) (Incident, error) {
 	var started, deadline *time.Time
 	err := row.Scan(&i.ID, &i.TenantID, &i.Title, &i.State, &i.Severity, &i.MaxRisk, &i.EventCount, &i.FirstEventAt, &i.LastEventAt,
 		&i.OpenedAt, &i.AckDeadline, &i.AcknowledgedAt, &i.ResolvedAt, &i.ClosedAt,
-		&started, &deadline, &b.Basis, &b.EscalatedAt, &b.DraftedAt, &b.ClosedAt, &b.Outcome)
+		&started, &deadline, &b.Basis, &b.EscalatedAt, &b.DraftedAt, &b.ClosedAt, &b.Outcome,
+		&i.BusinessUnit, &i.Region, &i.Sensitivity)
 	if errors.Is(err, pgx.ErrNoRows) {
 		err = ErrNotFound
 	}
@@ -383,46 +405,6 @@ func (s *Store) AddRawEvidence(ctx context.Context, id, kind string, raw []byte,
 	_, err = s.db.Exec(ctx, "INSERT INTO incident.evidence (id, incident_id, kind, ciphertext, sha256, created_at, expires_at) VALUES ($1, $2, $3, $4, $5, $6, $7)",
 		eid, id, kind, ct, hex.EncodeToString(sum[:]), now, now.Add(RawTTL))
 	return eid, err
-}
-
-// Unmask decrypts raw evidence (FR-INC-4). The router already demanded evidence.unmask, a fresh login and a
-// justification, and audited the access; this checks again (defence in depth, and for non-HTTP callers) and
-// writes the domain record naming the evidence, denied or granted, before any plaintext exists.
-func (s *Store) Unmask(ctx context.Context, c authz.Caller, id, eid, justification string, now time.Time) ([]byte, error) {
-	inc, err := s.Get(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	reason := ""
-	switch {
-	case !c.Can(authz.EvidenceUnmask, authz.Resource{}, now):
-		reason = "missing permission " + authz.EvidenceUnmask
-	case len(strings.TrimSpace(justification)) < authz.MinJustification:
-		reason = fmt.Sprintf("justification shorter than %d characters", authz.MinJustification)
-	}
-	target := map[string]any{"incident": id, "evidence": eid, "justification": justification}
-	if reason != "" {
-		target["denied"] = reason
-		if _, err := s.audit.Append(ctx, inc.TenantID, c.Username, "evidence.unmask.denied", target); err != nil {
-			return nil, err
-		}
-		return nil, fmt.Errorf("%w: %s", ErrForbidden, reason)
-	}
-	var ct []byte
-	err = s.db.QueryRow(ctx, "SELECT ciphertext FROM incident.evidence WHERE id = $1 AND incident_id = $2", eid, id).Scan(&ct)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, ErrNotFound
-	} else if err != nil {
-		return nil, err
-	}
-	if _, err := s.audit.Append(ctx, inc.TenantID, c.Username, "evidence.unmask", target); err != nil {
-		return nil, err // no audit record, no plaintext
-	}
-	dek, err := s.dek(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	return open(dek, ct, []byte("evidence:"+id+":"+eid))
 }
 
 // PurgeExpired deletes raw evidence past its TTL.

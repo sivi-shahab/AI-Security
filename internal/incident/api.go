@@ -69,7 +69,13 @@ func Routes(rt *authz.Router, s *Store, now func() time.Time) {
 			return
 		}
 		ticket, err := s.TicketOf(r.Context(), id)
-		reply(w, map[string]any{"incident": inc, "events": evs, "evidence": ev, "actions": acts, "blocks": blocks, "ticket": ticket}, err)
+		if err != nil {
+			reply(w, nil, err)
+			return
+		}
+		reqs, err := s.UnmaskRequests(r.Context(), id)
+		reply(w, map[string]any{"incident": inc, "events": evs, "evidence": ev, "actions": acts, "blocks": blocks, "ticket": ticket,
+			"unmask_requests": reqs}, err)
 	})
 	rt.Handle("POST /incidents/{id}/transition", authz.IncidentWrite, func(w http.ResponseWriter, r *http.Request, c authz.Caller) {
 		var body struct {
@@ -107,6 +113,15 @@ func Routes(rt *authz.Router, s *Store, now func() time.Time) {
 			err = ErrNotFound
 		}
 		reply(w, nil, err)
+	})
+	// Ticket 45 four-eyes for restricted evidence: request, then a second analyst approves one use (1 h).
+	rt.Handle("POST /incidents/{id}/evidence/{eid}/unmask-requests", authz.EvidenceUnmask, func(w http.ResponseWriter, r *http.Request, c authz.Caller) {
+		v, err := s.RequestUnmask(r.Context(), c, r.PathValue("id"), r.PathValue("eid"), authz.Justification(r), now())
+		reply(w, v, err)
+	})
+	rt.Handle("POST /incidents/{id}/unmask-requests/{rid}/approve", authz.EvidenceUnmask, func(w http.ResponseWriter, r *http.Request, c authz.Caller) {
+		v, err := s.ApproveUnmask(r.Context(), c, r.PathValue("id"), r.PathValue("rid"), authz.Justification(r), now())
+		reply(w, v, err)
 	})
 	rt.Handle("GET /incidents/{id}/evidence/{eid}/raw", authz.EvidenceUnmask, func(w http.ResponseWriter, r *http.Request, c authz.Caller) {
 		raw, err := s.Unmask(r.Context(), c, r.PathValue("id"), r.PathValue("eid"), authz.Justification(r), now())

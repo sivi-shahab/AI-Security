@@ -225,6 +225,10 @@ func main() {
 				_, _ = fmt.Fprintf(w, "# TYPE breach_timer_remaining_hours gauge\nbreach_timer_remaining_hours %g\n", *least)
 			}
 		}
+		// Ticket 45: unmask volume per analyst (alerts UnmaskVolumeHigh, UnmaskSamePrincipalRepeated).
+		if vols, err := incidents.UnmaskVolumes(r.Context(), time.Now().Add(-24*time.Hour)); err == nil {
+			incident.WriteUnmaskMetrics(w, vols)
+		}
 		if n, err := policies.ExpiringSoon(r.Context(), time.Now()); err == nil {
 			_, _ = fmt.Fprintf(w, "# TYPE policy_exceptions_expiring gauge\npolicy_exceptions_expiring %d\n", n)
 		}

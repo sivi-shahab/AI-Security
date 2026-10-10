@@ -76,7 +76,8 @@ type Resource struct {
 	BusinessUnit, Region, Sensitivity string
 }
 
-var sensitivityOrder = []string{"public", "internal", "confidential", "restricted"}
+// Sensitivities, least first: content sensitivity and clearance levels.
+var Sensitivities = []string{"public", "internal", "confidential", "restricted"}
 
 func allows(list []string, v string) bool {
 	return v == "" || len(list) == 0 || slices.Contains(list, "*") || slices.Contains(list, v)
@@ -90,8 +91,8 @@ func (a Attrs) Covers(r Resource) bool {
 	if r.Sensitivity == "" || a.Clearance == "" {
 		return true
 	}
-	return slices.Index(sensitivityOrder, r.Sensitivity) <= slices.Index(sensitivityOrder, a.Clearance) &&
-		slices.Index(sensitivityOrder, r.Sensitivity) >= 0
+	return slices.Index(Sensitivities, r.Sensitivity) <= slices.Index(Sensitivities, a.Clearance) &&
+		slices.Index(Sensitivities, r.Sensitivity) >= 0
 }
 
 // Binding gives a role, limited by Attrs, until Expires (zero = no expiry; auditors are time-boxed).

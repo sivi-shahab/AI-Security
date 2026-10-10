@@ -89,6 +89,18 @@ spec:
           labels: {severity: critical, category: security}
           annotations:
             summary: "{{ $value }} incident(s) past their acknowledge SLA"
+        # Ticket 45 (threat model G6): an analyst unmasking far more evidence than triage needs, or looking up the
+        # same person again and again. Gauges over the last 24 h from control-plane /metrics; tune thresholds here.
+        - alert: UnmaskVolumeHigh
+          expr: max by (analyst) (evidence_unmasks_24h) > 20
+          labels: {severity: warning, category: security}
+          annotations:
+            summary: "{{ $labels.analyst }} unmasked {{ $value }} pieces of evidence in 24 h"
+        - alert: UnmaskSamePrincipalRepeated
+          expr: max by (analyst) (evidence_unmask_same_principal_24h) >= 5
+          labels: {severity: warning, category: security}
+          annotations:
+            summary: "{{ $labels.analyst }} unmasked evidence about one person {{ $value }} times in 24 h"
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
