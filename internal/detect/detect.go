@@ -487,9 +487,9 @@ func highEntropy(v string) bool {
 
 var levels = []string{"public", "internal", "confidential", "restricted"}
 
-// classLevel: secrets are restricted; personal and financial identifiers confidential.
+// classLevel: secrets and health data (L2 NER) are restricted; personal and financial identifiers confidential.
 func classLevel(typ string) int {
-	if strings.HasPrefix(typ, "SECRET.") {
+	if strings.HasPrefix(typ, "SECRET.") || strings.HasPrefix(typ, "PHI") {
 		return 3
 	}
 	return 2

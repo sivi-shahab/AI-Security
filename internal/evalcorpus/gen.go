@@ -156,7 +156,7 @@ var piiTemplates = []tpl{
 
 var companies = []string{"Sinar Abadi", "Maju Bersama", "Nusantara Logistik", "Karya Teknik", "Sentosa Pangan", "Mitra Digital"}
 
-func (g *gen) piiSample(t tpl) (string, []Entity) {
+func (g *gen) piiSample(t tpl, full bool) (string, []Entity) {
 	b1, b2 := banks[g.r.IntN(len(banks))], banks[g.r.IntN(len(banks))]
 	nik := g.regionDate(g.r.IntN(2) == 0)
 	vals := map[string]string{
@@ -171,7 +171,36 @@ func (g *gen) piiSample(t tpl) (string, []Entity) {
 	}
 	types := map[string]string{"nik": "PII_ID.NIK", "nik2": "PII_ID.NIK", "nik_spaced": "PII_ID.NIK", "kk": "PII_ID.KK", "npwp": "PII_ID.NPWP",
 		"npwp16": "PII_ID.NPWP", "phone": "PII_ID.PHONE", "phone2": "PII_ID.PHONE", "pan": "PCI.PAN", "acct": "FIN.ACCOUNT", "acct2": "FIN.ACCOUNT"}
-	return fill(t.text, vals, types)
+	if !full {
+		return fill(t.text, vals, types)
+	}
+	// Full labels (NER gold, ticket 09): names and "Jl. … No. …, <city>" addresses too. Same values, same RNG path,
+	// so the text is byte-identical to the frozen one.
+	types["name"], types["name2"], types["street"], types["city"] = "PII.NAME", "PII.NAME", "_street", "_city"
+	text, es := fill(t.text, vals, types)
+	return text, joinAddresses(text, es)
+}
+
+// joinAddresses turns a street slot followed by a city slot into one PII.ADDRESS span from "Jl." to the city; a
+// city alone (a branch, the place on a letter) is not an address.
+func joinAddresses(text string, es []Entity) []Entity {
+	var out []Entity
+	for i, e := range es {
+		switch e.Type {
+		case "_street":
+			start := e.Start
+			if strings.HasSuffix(text[:start], "Jl. ") {
+				start -= len("Jl. ")
+			}
+			if i+1 < len(es) && es[i+1].Type == "_city" {
+				out = append(out, Entity{Type: "PII.ADDRESS", Start: start, End: es[i+1].End})
+			}
+		case "_city":
+		default:
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 func (g *gen) npwpFormatted() string {
@@ -452,7 +481,7 @@ func Synthetic(seed uint64) (pii, injection, benign []Sample) {
 	}
 	for range 40 {
 		for _, t := range piiTemplates {
-			text, es := g.piiSample(t)
+			text, es := g.piiSample(t, false)
 			add(&pii, Sample{Kind: "pii", Lang: t.lang, Text: text, Entities: es, Template: t.id})
 		}
 	}
@@ -480,4 +509,26 @@ func Synthetic(seed uint64) (pii, injection, benign []Sample) {
 		}
 	}
 	return pii, injection, benign
+}
+
+// PIIFull replays the PII file of Synthetic(seed) with full NER labels (names, addresses) added: derived gold for
+// scoring an NER model on a frozen holdout without editing it. Texts and IDs are the frozen ones (PII comes first
+// in Synthetic, so the replay consumes the generator exactly as the frozen run did).
+func PIIFull(seed uint64) []Sample {
+	g := &gen{rand.New(rand.NewPCG(seed, 4))}
+	prov := fmt.Sprintf("synthetic:%s seed=%d", GeneratorVersion, seed)
+	seen := map[string]bool{}
+	var out []Sample
+	for range 40 {
+		for _, t := range piiTemplates {
+			text, es := g.piiSample(t, true)
+			if seen[text] {
+				continue
+			}
+			seen[text] = true
+			out = append(out, Sample{ID: fmt.Sprintf("pii-%04d", len(out)+1), Kind: "pii", Lang: t.lang, Text: text, Entities: es,
+				Template: t.id, Provenance: prov})
+		}
+	}
+	return out
 }

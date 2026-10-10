@@ -4,13 +4,18 @@
 //	evalcorpus score  -dir data/eval/v1          # verify hashes, score detection L1, print Markdown
 //	evalcorpus sheet  -dir data/eval/v1 > s.jsonl  # blind sheet for annotators: id + text, no labels
 //	evalcorpus kappa  a.jsonl b.jsonl            # Cohen's κ per question; exit 1 below 0.8
+//	evalcorpus train -seed 7 -n 3000 > t.jsonl    # L2 training data (train-only templates; tickets 09-10)
+//	evalcorpus nergold -dir data/eval/v1 > g.jsonl # holdout PII with derived name/address gold (NER scoring)
+//	evalcorpus l2eval -dir data/eval/v1 -url http://localhost:8080 -threshold 0.5  # score the served L2 model
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"maps"
+	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
@@ -18,6 +23,7 @@ import (
 
 	"aisec/internal/detect"
 	"aisec/internal/evalcorpus"
+	"aisec/internal/l2"
 )
 
 // MinKappa is the inter-annotator agreement the spec requires (§9.3).
@@ -37,6 +43,8 @@ func main() {
 	dir := fs.String("dir", "data/eval/v1", "eval set directory")
 	seed := fs.Uint64("seed", 1, "generator seed (freeze)")
 	threshold := fs.Float64("threshold", 0.8, "injection score counted as flagged (score)")
+	n := fs.Int("n", 3000, "generator rounds (train)")
+	url := fs.String("url", "http://localhost:8080", "model-inference (l2eval)")
 	_ = fs.Parse(os.Args[2:])
 	var err error
 	switch os.Args[1] {
@@ -59,6 +67,12 @@ func main() {
 		}
 	case "kappa":
 		err = kappa(fs.Args())
+	case "train":
+		_, err = os.Stdout.Write(evalcorpus.Encode(evalcorpus.Training(*seed, *n)))
+	case "nergold":
+		err = nerGold(*dir)
+	case "l2eval":
+		err = l2Eval(*dir, *url, *threshold)
 	default:
 		usage()
 	}
@@ -69,7 +83,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: evalcorpus freeze|score|sheet|kappa [flags]")
+	fmt.Fprintln(os.Stderr, "usage: evalcorpus freeze|score|sheet|kappa|train|nergold [flags]")
 	os.Exit(2)
 }
 
@@ -107,6 +121,70 @@ func freeze(dir string, seed uint64) error {
 	}
 	js, _ := json.MarshalIndent(m, "", " ")
 	return os.WriteFile(filepath.Join(dir, "MANIFEST.json"), append(js, '\n'), 0o644)
+}
+
+// nerGold prints the holdout's PII file with full NER labels (names, addresses) derived by replaying its generator,
+// after checking every text is the frozen one: gold for scoring the L2 NER, the holdout itself untouched.
+func nerGold(dir string) error {
+	m, ss, err := evalcorpus.Load(dir)
+	if err != nil {
+		return err
+	}
+	var seed uint64
+	for _, f := range m.Files {
+		if f.Kind == "pii" {
+			seed = f.Seed
+		}
+	}
+	frozen := map[string]string{}
+	for _, s := range ss {
+		if s.Kind == "pii" {
+			frozen[s.ID] = s.Text
+		}
+	}
+	full := evalcorpus.PIIFull(seed)
+	if len(full) != len(frozen) {
+		return fmt.Errorf("replay has %d PII samples, holdout %d", len(full), len(frozen))
+	}
+	for _, s := range full {
+		if frozen[s.ID] != s.Text {
+			return fmt.Errorf("%s: replayed text differs from the frozen one", s.ID)
+		}
+	}
+	_, err = os.Stdout.Write(evalcorpus.Encode(full))
+	return err
+}
+
+// l2Eval scores the served L2 model on the holdout through the same client detection-svc uses (views, timeout
+// path), one request at a time: per-entity F1 alone and merged with L1, ECE, injection rates, call latency.
+func l2Eval(dir, url string, threshold float64) error {
+	m, ss, err := evalcorpus.Load(dir)
+	if err != nil {
+		return err
+	}
+	var seed uint64
+	for _, f := range m.Files {
+		if f.Kind == "pii" {
+			seed = f.Seed
+		}
+	}
+	gold := map[string][]evalcorpus.Entity{}
+	for _, s := range evalcorpus.PIIFull(seed) {
+		gold[s.ID] = s.Entities
+	}
+	c := &l2.Client{URL: url, Mode: l2.Enforce, Timeout: 30 * time.Second, HTTP: &http.Client{}}
+	var failed int
+	sc := evalcorpus.ScoreL2(ss, gold, func(text string) evalcorpus.L2Answer {
+		rep, err := c.Analyze(context.Background(), text, "trusted")
+		if err != nil {
+			failed++
+		}
+		return evalcorpus.L2Answer{Entities: rep.Entities, Injection: rep.Injection, Latency: time.Duration(rep.LatencyMS * float64(time.Millisecond))}
+	}, threshold)
+	if failed > 0 {
+		return fmt.Errorf("%d of %d L2 calls failed", failed, sc.Calls)
+	}
+	return sc.Markdown(os.Stdout)
 }
 
 func kappa(files []string) error {

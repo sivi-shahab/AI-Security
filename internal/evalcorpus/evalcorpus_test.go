@@ -158,3 +158,84 @@ func TestScoreL1(t *testing.T) {
 		t.Error("scorer counts nothing")
 	}
 }
+
+// TestPIIFull: the derived NER gold replays the frozen PII file byte for byte, keeps its labels and adds every
+// name and street address (ticket 09: scoring NER on the holdout without editing it).
+func TestPIIFull(t *testing.T) {
+	_, ss, err := Load(holdout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	frozen := map[string]Sample{}
+	for _, s := range ss {
+		frozen[s.ID] = s
+	}
+	names, addrs := 0, 0
+	for _, s := range PIIFull(1) {
+		f := frozen[s.ID]
+		if f.Text != s.Text {
+			t.Fatalf("%s: replay differs", s.ID)
+		}
+		var kept []Entity
+		for _, e := range s.Entities {
+			switch e.Type {
+			case "PII.NAME":
+				names++
+				if !slices.ContainsFunc(firstNames, func(n string) bool { return strings.HasPrefix(s.Text[e.Start:e.End], n) }) {
+					t.Errorf("%s: name %q", s.ID, s.Text[e.Start:e.End])
+				}
+			case "PII.ADDRESS":
+				addrs++
+				if v := s.Text[e.Start:e.End]; !strings.HasPrefix(v, "Jl. ") || !slices.ContainsFunc(cities, func(c string) bool { return strings.HasSuffix(v, c) }) {
+					t.Errorf("%s: address %q", s.ID, v)
+				}
+			default:
+				kept = append(kept, e)
+			}
+		}
+		if !slices.Equal(kept, f.Entities) {
+			t.Errorf("%s: structured labels changed: %v vs %v", s.ID, kept, f.Entities)
+		}
+	}
+	if names < 600 || addrs < 50 {
+		t.Errorf("%d names, %d addresses labelled", names, addrs)
+	}
+}
+
+// TestTrainingDisjoint: the L2 training data shares no template, name, place, goal or text with the holdout, so
+// holdout scores measure generalisation; its labels are valid like the holdout's (tickets 09-10).
+func TestTrainingDisjoint(t *testing.T) {
+	_, ss, err := Load(holdout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	held := map[string]bool{}
+	for _, s := range ss {
+		held[s.Text] = true
+	}
+	for _, l := range [][2][]string{{firstNames, trainFirst}, {lastNames, trainLast}, {cities, trainCities}, {streets, trainStreets},
+		{goalsEN, trainGoalsEN}, {goalsID, trainGoalsID}, {gcgTokens, trainSuffix}} {
+		for _, x := range l[1] {
+			if slices.Contains(l[0], x) {
+				t.Errorf("%q is in both the holdout and the training vocabulary", x)
+			}
+		}
+	}
+	kinds := map[string]int{}
+	for _, s := range Training(7, 300) {
+		kinds[s.Kind]++
+		if held[s.Text] {
+			t.Errorf("training text is in the holdout: %q", s.Text)
+		}
+		for _, e := range s.Entities {
+			if strings.HasPrefix(e.Type, "PII_ID.") || e.Type == "PCI.PAN" {
+				if v := digitsOf(s.Text[e.Start:e.End]); !validEntity(e.Type, v) {
+					t.Errorf("%s %q not valid", e.Type, s.Text[e.Start:e.End])
+				}
+			}
+		}
+	}
+	if kinds["pii"] < 250 || kinds["injection"] < 500 || kinds["benign"] < 100 {
+		t.Errorf("kinds %v", kinds)
+	}
+}

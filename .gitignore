@@ -4,3 +4,7 @@ __pycache__/
 .cache/
 graft/
 .claude/
+# L2 training output and model artifacts (tickets 09-10): reproducible from services/model-inference/train, pinned
+# by hash in services/model-inference/MODELS.json.
+services/model-inference/train/out/
+services/model-inference/models/

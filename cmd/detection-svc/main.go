@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"aisec/internal/detect"
+	"aisec/internal/l2"
 	"aisec/internal/privacy"
 	"aisec/internal/server"
 	"aisec/internal/similarity"
@@ -23,7 +25,7 @@ const maxContent = 256 << 10
 // model judges false positives (ticket 38), registered confidential documents found (ticket 37), sensitivity, and the
 // redacted snippet PEPs put in the decision event. Content is never logged or echoed back; matches carry offsets,
 // not values.
-func scanText(tuned *tuning.Live, similar *similarity.Live) http.HandlerFunc {
+func scanText(tuned *tuning.Live, similar *similarity.Live, model *l2.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Content   string `json:"content"`
@@ -31,6 +33,7 @@ func scanText(tuned *tuning.Live, similar *similarity.Live) http.HandlerFunc {
 			Direction string `json:"direction"`
 			Context   struct {
 				AppID string `json:"app_id"`
+				Trust string `json:"trust"` // trusted | untrusted (FR-PSEC-2)
 			} `json:"context"`
 		}
 		err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxContent+16<<10)).Decode(&req)
@@ -47,9 +50,11 @@ func scanText(tuned *tuning.Live, similar *similarity.Live) http.HandlerFunc {
 			detect.Result
 			Similar []similarity.Hit `json:"similar,omitempty"`
 			Tuning  *tuning.Report   `json:"tuning,omitempty"`
+			L2      *l2.Report       `json:"l2,omitempty"`
 			Snippet string           `json:"snippet"`
 		}
 		res.Result, res.Tuning = tuned.Apply(req.Content, detect.Scan(req.Content), req.Channel, req.Direction, req.Context.AppID)
+		res.Result, res.L2 = model.Add(r.Context(), res.Result, req.Content, req.Context.Trust)
 		res.Similar = similar.Index().Match(req.Content)
 		similarity.Apply(&res.Result, res.Similar)
 		res.Snippet = detect.Snippet(req.Content, res.Matches)
@@ -58,7 +63,31 @@ func scanText(tuned *tuning.Live, similar *similarity.Live) http.HandlerFunc {
 	}
 }
 
-// Env: MTLS_DIR, MTLS_ALLOW (internal/server, ticket 40). Optional (without it only L1 runs): DATABASE_URL (read access to similarity.docs and tuning.models), TENANT_ID,
+// l2Client is the L2 model (tickets 09-10) from MODEL_INFERENCE_URL (unset: L1 only), L2_MODE (shadow, the
+// default, or enforce: spec §9.4 rollout) and L2_TIMEOUT (Go duration, default 80ms: the 50 ms p95 budget plus
+// headroom; past it the L1 result stands).
+func l2Client() *l2.Client {
+	url := os.Getenv("MODEL_INFERENCE_URL")
+	if url == "" {
+		return nil
+	}
+	// model-inference serves mTLS only, to detection-svc (ticket 40).
+	hc, err := server.MTLSClient(0, "spiffe://aisec.bank/ns/aisec/sa/model-inference")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "detection-svc: model-inference client:", err)
+		os.Exit(1)
+	}
+	c := &l2.Client{URL: url, Mode: l2.Shadow, Timeout: 80 * time.Millisecond, HTTP: hc}
+	if os.Getenv("L2_MODE") == l2.Enforce {
+		c.Mode = l2.Enforce
+	}
+	if d, err := time.ParseDuration(os.Getenv("L2_TIMEOUT")); err == nil && d > 0 {
+		c.Timeout = d
+	}
+	return c
+}
+
+// Env: MTLS_DIR, MTLS_ALLOW (internal/server, ticket 40). Optional (without it only L1 runs): MODEL_INFERENCE_URL, L2_MODE, L2_TIMEOUT (l2Client); DATABASE_URL (read access to similarity.docs and tuning.models), TENANT_ID,
 // TENANT_PEPPER.
 func main() {
 	var similar *similarity.Live
@@ -84,6 +113,6 @@ func main() {
 
 func workloadRoutes(tuned *tuning.Live, similar *similarity.Live) *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /scan/text", scanText(tuned, similar))
+	mux.HandleFunc("POST /scan/text", scanText(tuned, similar, l2Client()))
 	return mux
 }

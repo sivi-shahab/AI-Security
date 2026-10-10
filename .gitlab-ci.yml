@@ -109,7 +109,7 @@ test:python:
   stage: test
   image: $PYTHON_IMAGE
   script:
-    - cd services/model-inference && python -m unittest -v
+    - cd services/model-inference && pip install --no-cache-dir -r requirements.txt && python -m unittest -v
 
 sast:
   stage: scan

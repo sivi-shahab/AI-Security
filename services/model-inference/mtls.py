@@ -91,8 +91,9 @@ class Health(BaseHTTPRequestHandler):
         pass
 
 
-def servers(handler):
-    """[probe server, model server] with MTLS_DIR; [one plain server] with MTLS_INSECURE=true (development)."""
+def servers(handler, probe=None):
+    """[probe server, model server] with MTLS_DIR; [one plain server] with MTLS_INSECURE=true (development).
+    probe serves the plain probe port (default: /healthz only); it must expose no model route."""
     port = int(os.environ.get("PORT", "8080"))
     directory = os.environ.get("MTLS_DIR")
     if directory:
@@ -103,7 +104,7 @@ def servers(handler):
             raise SystemExit("MTLS_ALLOW is empty: no workload could call")
         mport = int(os.environ.get("MTLS_PORT", "8443"))
         return [
-            ThreadingHTTPServer(("", port), Health),
+            ThreadingHTTPServer(("", port), probe or Health),
             MTLSServer(("", mport), handler, SVID(directory), allow),
         ]
     if os.environ.get("MTLS_INSECURE") == "true":

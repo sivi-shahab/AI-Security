@@ -1,0 +1,21 @@
+{
+ "note": "Released L2 models. Artifacts live in the model store (PVC model-store), never in git; the release job copies a model directory there only if every file matches its sha256 here. Reproduce: MODEL_CARD.md.",
+ "models": {
+  "pii-ner-1": {
+   "ticket": "09",
+   "tasks": ["ner"],
+   "rollout": "shadow",
+   "files": {
+    "model.onnx": "c737e1234a196d70a07e8b1b712340b5f1cc740744b807e287969a2ecf1e5ad9",
+    "tokenizer.json": "68376ce5e989db0c0bdb282422a99e12e449c1f97a1a18daf705626db0d57b83",
+    "trigram.json": "cc8143dbe928144936a56c2903056e738f506b425636a5334a02146a4292492c",
+    "model.json": "88ca37ca3388aa9e2c3ecdfc2834ffb297475b075c8602b58d240b41a38c39cb"
+   },
+   "version_hash": "46960d7d86e06c0b61be024c77f976ad4748dfb1f5796ad1d63cc114eb014fc6",
+   "base": {"model": "distilbert/distilbert-base-multilingual-cased", "revision": "45c032ab32cc946ad88a166f7cb282f58c753c2e", "license": "Apache-2.0", "layers_used": 3},
+   "training_data": [
+    {"name": "train.jsonl", "source": "evalcorpus train -seed 7 -n 3000 (evalcorpus-train/1, train-only templates)", "license": "internal (synthetic)", "sha256": "4e543e87689e2383d591925e1834bf537bd4b1994632a50158f279067f20d8f5"}
+   ]
+  }
+ }
+}

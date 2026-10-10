@@ -92,3 +92,28 @@ class MTLSTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ProbePortTest(unittest.TestCase):
+    """The plain probe port answers /healthz and /readyz, never a model route."""
+
+    def test_probe_has_no_model_route(self):
+        from http.server import ThreadingHTTPServer
+
+        import app
+
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), app.Probe)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.server_close)
+        self.addCleanup(srv.shutdown)
+        def status(method, path):
+            c = http.client.HTTPConnection("127.0.0.1", srv.server_address[1])
+            c.request(method, path, body=b"{}" if method == "POST" else None)
+            r = c.getresponse()
+            r.read()
+            c.close()
+            return r.status
+
+        self.assertEqual(status("POST", "/v1/analyze"), 404)
+        self.assertEqual(status("GET", "/healthz"), 200)
+        self.assertEqual(status("GET", "/readyz"), 503)  # no model loaded in this test

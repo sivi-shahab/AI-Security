@@ -206,9 +206,12 @@ spec:
           # Secret detection-svc (out of band, optional): DATABASE_URL (read-only role on similarity.docs, tuning.models), TENANT_ID,
           # TENANT_PEPPER (same as control-plane) for registered confidential documents (37) and tenant tuning models (38).
           envFrom: [{secretRef: {name: detection-svc, optional: true}}]
+          # L2 models (tickets 09-10): shadow first (spec §9.4); enforce after the release gate. model-inference is mTLS-only (ticket 40).
           env:
             - {name: MTLS_DIR, value: /spiffe}
             - {name: MTLS_ALLOW, value: "spiffe://aisec.bank/ns/aisec/sa/ai-gateway,spiffe://aisec.bank/ns/aisec/sa/mcp-gateway"}
+            - {name: MODEL_INFERENCE_URL, value: https://model-inference:8443}
+            - {name: L2_MODE, value: shadow}
           volumeMounts: [{name: spiffe, mountPath: /spiffe, readOnly: true}]
           readinessProbe: {httpGet: {path: /healthz, port: http}}
           livenessProbe: {httpGet: {path: /healthz, port: http}}
@@ -255,22 +258,30 @@ spec:
           image: registry.local/aisec/model-inference:dev
           imagePullPolicy: Always
           # http: probes only; mtls: the models, for detection-svc only (ticket 40, services/model-inference/mtls.py).
+          # The model comes from the model store (PVC model-store, written by the release job that checks the sha256 in
+          # services/model-inference/MODELS.json); never baked into the image.
           ports: [{containerPort: 8080, name: http}, {containerPort: 8443, name: mtls}]
           env:
             - {name: MTLS_DIR, value: /spiffe}
             - {name: MTLS_ALLOW, value: "spiffe://aisec.bank/ns/aisec/sa/detection-svc"}
-          volumeMounts: [{name: spiffe, mountPath: /spiffe, readOnly: true}]
-          readinessProbe: {httpGet: {path: /healthz, port: http}}
+            - {name: MODEL_DIR, value: /models/l2}
+            - {name: ORT_THREADS, value: "2"}
+          readinessProbe: {httpGet: {path: /readyz, port: http}}
           livenessProbe: {httpGet: {path: /healthz, port: http}}
+          volumeMounts:
+            - {name: models, mountPath: /models, readOnly: true}
+            - {name: spiffe, mountPath: /spiffe, readOnly: true}
           resources:
-            requests: {cpu: 50m, memory: 64Mi}
-            limits: {cpu: 500m, memory: 256Mi}
+            requests: {cpu: "2", memory: 768Mi}
+            limits: {cpu: "2", memory: 1Gi}  # int8 encoder ~135 MB + tokenizer + trigram LM; 2 cores = ORT_THREADS
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities: {drop: [ALL]}
       volumes:
         - {name: spiffe, csi: {driver: spiffe.csi.cert-manager.io, readOnly: true}}
+        - name: models
+          persistentVolumeClaim: {claimName: model-store, readOnly: true}
 ---
 apiVersion: v1
 kind: Service
