@@ -37,8 +37,8 @@ import (
 	"aisec/policy"
 )
 
-// Env: BUNDLE_SIGNING_KEY_FILE, DATABASE_URL, INCIDENT_KEK_FILE (32 raw bytes), KAFKA_BROKERS, SCHEMA_REGISTRY_URL,
-// TENANT_ID, TENANT_PEPPER (similarity fingerprints, ticket 37), TIKA_URL (optional: PDF registration), PUBLIC_URL, CATALOG_FEED_URL + CATALOG_FEED_PUBKEY_FILE (signed app catalog feed), OPENSEARCH_URL/USER/PASSWORD (policy simulation reads stored events), and identity (ADR-0002): OIDC_ISSUER, OIDC_AUDIENCE, OIDC_MFA_ACR (comma-separated acr
+// Env: BUNDLE_SIGNING_KEY_FILE, DATABASE_URL, INCIDENT_KEK_FILE (32 raw bytes), KAFKA_* (events.KafkaOpts), SCHEMA_REGISTRY_URL,
+// TENANT_ID, TENANT_PEPPER (similarity fingerprints, ticket 37), TIKA_URL (optional: PDF registration), PUBLIC_URL, CATALOG_FEED_URL + CATALOG_FEED_PUBKEY_FILE (signed app catalog feed), OPENSEARCH_* (ingest.OpenSearchFromEnv; policy simulation reads stored events), and identity (ADR-0002): OIDC_ISSUER, OIDC_AUDIENCE, OIDC_MFA_ACR (comma-separated acr
 // values that mean MFA), BREAK_GLASS_SUBS (comma-separated token subs), SCIM_TOKEN_SHA256 (hex),
 // MCP_GATEWAY_TOKEN_SHA256 (hex; the MCP gateway reporting tools/list and asking for approvals, tickets 29-30),
 // APPROVAL_TTL (Go duration, default 15m), APPROVAL_WEBHOOK_URL (chat webhook for new approval requests; optional),
@@ -142,8 +142,10 @@ func main() {
 	if err != nil {
 		fail("simulation corpus", err)
 	}
-	search := &ingest.OpenSearch{URL: os.Getenv("OPENSEARCH_URL"), User: os.Getenv("OPENSEARCH_USER"), Password: os.Getenv("OPENSEARCH_PASSWORD"),
-		HTTP: &http.Client{Timeout: time.Minute}}
+	search, err := ingest.OpenSearchFromEnv(os.Getenv, time.Minute)
+	if err != nil {
+		fail("opensearch config", err)
+	}
 	simulator := &lifecycle.Simulator{Store: policies, Source: search.Events, Corpus: corpus, MaxEvents: 100_000, Log: log}
 	go func() {
 		for t := time.NewTicker(time.Hour); ctx.Err() == nil; <-t.C {
@@ -234,8 +236,11 @@ func main() {
 		}
 	})
 	// One consumer group feeds every control-plane module that learns from decision events.
-	kc, err := kgo.NewClient(kgo.SeedBrokers(strings.Split(os.Getenv("KAFKA_BROKERS"), ",")...),
-		kgo.ConsumerGroup(consumerGroup), kgo.ConsumeTopics(events.Topic), kgo.DisableAutoCommit())
+	kafka, err := events.KafkaOpts(os.Getenv)
+	if err != nil {
+		fail("kafka config", err)
+	}
+	kc, err := kgo.NewClient(append(kafka, kgo.ConsumerGroup(consumerGroup), kgo.ConsumeTopics(events.Topic), kgo.DisableAutoCommit())...)
 	if err != nil {
 		fail("kafka client", err)
 	}

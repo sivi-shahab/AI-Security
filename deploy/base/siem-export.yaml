@@ -31,11 +31,16 @@ spec:
           env:
             - {name: SIEM_SYSLOG_CA_FILE, value: /siem/ca.crt}
             - {name: SIEM_HTTP_AUTH_FILE, value: /siem/http-auth}
+            # Event bus (ticket 41): TLS + SASL/SCRAM as siem-export; files from Secret siem-export-bus (out of band).
+            - {name: KAFKA_SASL_USER, value: siem-export}
+            - {name: KAFKA_SASL_PASSWORD_FILE, value: /bus/kafka-password}
+            - {name: KAFKA_CA_FILE, value: /bus/kafka-ca.crt}
           ports: [{containerPort: 8080, name: http}]  # /healthz, /metrics, POST /alertmanager
           readinessProbe: {httpGet: {path: /healthz, port: http}}
           livenessProbe: {httpGet: {path: /healthz, port: http}}
           volumeMounts:
             - {name: siem, mountPath: /siem, readOnly: true}
+            - {name: bus, mountPath: /bus, readOnly: true}
           resources:
             requests: {cpu: 50m, memory: 64Mi}
             limits: {cpu: 500m, memory: 256Mi}
@@ -45,6 +50,7 @@ spec:
             capabilities: {drop: [ALL]}
       volumes:
         - {name: siem, secret: {secretName: siem-export-files}}
+        - {name: bus, secret: {secretName: siem-export-bus}}
 ---
 apiVersion: v1
 kind: Service

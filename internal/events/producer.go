@@ -16,8 +16,9 @@ type Producer struct {
 	header []byte
 }
 
-// NewProducer registers SchemaV1 under Subject (idempotent: same schema, same id) and connects to Kafka.
-func NewProducer(ctx context.Context, brokers []string, registryURL string, opts ...kgo.Opt) (*Producer, error) {
+// NewProducer registers SchemaV1 under Subject (idempotent: same schema, same id) and connects to Kafka with opts
+// (KafkaOpts: brokers, TLS, SASL).
+func NewProducer(ctx context.Context, registryURL string, opts ...kgo.Opt) (*Producer, error) {
 	schema, err := Compile(SchemaV1)
 	if err != nil {
 		return nil, err
@@ -35,7 +36,7 @@ func NewProducer(ctx context.Context, brokers []string, registryURL string, opts
 	if err != nil {
 		return nil, err
 	}
-	kc, err := kgo.NewClient(append([]kgo.Opt{kgo.SeedBrokers(brokers...), kgo.DefaultProduceTopic(Topic)}, opts...)...)
+	kc, err := kgo.NewClient(append([]kgo.Opt{kgo.DefaultProduceTopic(Topic)}, opts...)...)
 	if err != nil {
 		return nil, err
 	}

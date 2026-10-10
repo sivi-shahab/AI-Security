@@ -19,7 +19,7 @@ import (
 )
 
 // Env: AIGW_CONFIG_FILE (aigw.Config: apps with gateway key hashes and limits, providers with vault key files),
-// OPA_URL (default http://127.0.0.1:8181, the sidecar), KAFKA_BROKERS, SCHEMA_REGISTRY_URL, TENANT_ID,
+// OPA_URL (default http://127.0.0.1:8181, the sidecar), KAFKA_* (events.KafkaOpts), SCHEMA_REGISTRY_URL, TENANT_ID,
 // TENANT_PEPPER, REDIS_URL (rate limits and token quotas shared across replicas; without it, per replica),
 // VAULT_URLS (comma-separated token-vault URLs, tried in order; without it, tokenize redacts) and VAULT_TOKEN.
 func main() {
@@ -46,7 +46,11 @@ func main() {
 	for _, p := range cfg.Providers {
 		providers[p.Name] = p
 	}
-	producer, err := events.NewProducer(ctx, strings.Split(os.Getenv("KAFKA_BROKERS"), ","), os.Getenv("SCHEMA_REGISTRY_URL"))
+	kafka, err := events.KafkaOpts(os.Getenv)
+	if err != nil {
+		fail("kafka config", err)
+	}
+	producer, err := events.NewProducer(ctx, os.Getenv("SCHEMA_REGISTRY_URL"), kafka...)
 	if err != nil {
 		fail("event producer", err)
 	}

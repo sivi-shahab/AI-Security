@@ -25,10 +25,7 @@ import (
 	"aisec/internal/siem"
 )
 
-// DLQTopic holds records no SIEM sink accepted, sanitized, for replay.
-const DLQTopic = "aisec.siem.dlq.v1"
-
-// Env: KAFKA_BROKERS, SCHEMA_REGISTRY_URL, DATABASE_URL (audit log + cursor), SIEM_MIN_RISK (default 40),
+// Env: KAFKA_* (events.KafkaOpts), SCHEMA_REGISTRY_URL, DATABASE_URL (audit log + cursor), SIEM_MIN_RISK (default 40),
 // syslog sink: SIEM_SYSLOG_ADDR, SIEM_SYSLOG_CA_FILE (TLS; SIEM_SYSLOG_PLAINTEXT=true only for a local collector),
 // HTTP sink: SIEM_HTTP_URL, SIEM_HTTP_FORMAT (hec|json), SIEM_HTTP_AUTH_FILE (Authorization header value),
 // ALERTMANAGER_TOKEN_SHA256 (hex), SOAR webhook: SOAR_WEBHOOK_URL + SOAR_WEBHOOK_SECRET_FILE (HMAC key). At least one sink.
@@ -77,8 +74,11 @@ func main() {
 		fail("no SIEM sink", errors.New("set SIEM_SYSLOG_ADDR and/or SIEM_HTTP_URL"))
 	}
 
-	brokers := strings.Split(os.Getenv("KAFKA_BROKERS"), ",")
-	producer, err := kgo.NewClient(kgo.SeedBrokers(brokers...), kgo.DefaultProduceTopic(DLQTopic))
+	kafka, err := events.KafkaOpts(os.Getenv)
+	if err != nil {
+		fail("kafka config", err)
+	}
+	producer, err := kgo.NewClient(append(kafka, kgo.DefaultProduceTopic(siem.DLQTopic))...)
 	if err != nil {
 		fail("kafka producer", err)
 	}
@@ -104,7 +104,7 @@ func main() {
 		}
 	}()
 
-	consumer, err := kgo.NewClient(kgo.SeedBrokers(brokers...), kgo.ConsumerGroup(siem.Group), kgo.ConsumeTopics(events.Topic), kgo.DisableAutoCommit())
+	consumer, err := kgo.NewClient(append(kafka, kgo.ConsumerGroup(siem.Group), kgo.ConsumeTopics(events.Topic), kgo.DisableAutoCommit())...)
 	if err != nil {
 		fail("kafka consumer", err)
 	}

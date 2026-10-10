@@ -137,7 +137,7 @@ func TestPipelineIntegration(t *testing.T) {
 	runErr := make(chan error, 1)
 	go func() { runErr <- in.Run(runCtx) }()
 
-	prod, err := events.NewProducer(ctx, []string{brokers}, registry)
+	prod, err := events.NewProducer(ctx, registry, kgo.SeedBrokers(brokers))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -18,7 +18,7 @@ import (
 
 // Env: MCP_BASE_URL (public origin agents call), OIDC_ISSUER (Keycloak realm), MCP_SERVERS_FILE (JSON list of
 // mcpgw.Server), STS_TOKEN_URL (default: the realm's token endpoint), STS_CLIENT_ID, STS_CLIENT_SECRET,
-// OPA_URL (default http://127.0.0.1:8181, the sidecar), KAFKA_BROKERS, SCHEMA_REGISTRY_URL, TENANT_ID,
+// OPA_URL (default http://127.0.0.1:8181, the sidecar), KAFKA_* (events.KafkaOpts), SCHEMA_REGISTRY_URL, TENANT_ID,
 // TENANT_PEPPER, MCP_DEFAULT_RATE (tools/call per minute per agent and tool, default 60), CONTROL_PLANE_URL and
 // MCP_GATEWAY_TOKEN (tools/list reports to the registry, ticket 29).
 func main() {
@@ -66,7 +66,11 @@ func main() {
 	if err != nil || rate < 1 {
 		fail("MCP_DEFAULT_RATE", errors.New("positive integer"))
 	}
-	producer, err := events.NewProducer(ctx, strings.Split(os.Getenv("KAFKA_BROKERS"), ","), os.Getenv("SCHEMA_REGISTRY_URL"))
+	kafka, err := events.KafkaOpts(os.Getenv)
+	if err != nil {
+		fail("kafka config", err)
+	}
+	producer, err := events.NewProducer(ctx, os.Getenv("SCHEMA_REGISTRY_URL"), kafka...)
 	if err != nil {
 		fail("event producer", err)
 	}

@@ -3,11 +3,16 @@ package ingest
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 )
 
@@ -34,6 +39,36 @@ type Doc struct {
 type OpenSearch struct {
 	URL, User, Password string
 	HTTP                *http.Client
+}
+
+// OpenSearchFromEnv is the client the services use (ticket 41): https with basic auth, verified against
+// OPENSEARCH_CA_FILE (PEM; empty = system roots). http:// is refused unless OPENSEARCH_PLAINTEXT=true (local/CI).
+// Env: OPENSEARCH_URL, OPENSEARCH_USER, OPENSEARCH_PASSWORD, OPENSEARCH_CA_FILE, OPENSEARCH_PLAINTEXT.
+func OpenSearchFromEnv(getenv func(string) string, timeout time.Duration) (*OpenSearch, error) {
+	o := &OpenSearch{URL: getenv("OPENSEARCH_URL"), User: getenv("OPENSEARCH_USER"), Password: getenv("OPENSEARCH_PASSWORD")}
+	if getenv("OPENSEARCH_PLAINTEXT") != "true" {
+		if !strings.HasPrefix(o.URL, "https://") {
+			return nil, fmt.Errorf("OPENSEARCH_URL must be https:// (got %q)", o.URL)
+		}
+		if o.User == "" || o.Password == "" {
+			return nil, errors.New("OPENSEARCH_USER and OPENSEARCH_PASSWORD are required")
+		}
+	}
+	cfg := &tls.Config{MinVersion: tls.VersionTLS12}
+	if f := getenv("OPENSEARCH_CA_FILE"); f != "" {
+		pem, err := os.ReadFile(f)
+		if err != nil {
+			return nil, fmt.Errorf("OPENSEARCH_CA_FILE: %w", err)
+		}
+		cfg.RootCAs = x509.NewCertPool()
+		if !cfg.RootCAs.AppendCertsFromPEM(pem) {
+			return nil, errors.New("OPENSEARCH_CA_FILE: no certificate")
+		}
+	}
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.TLSClientConfig = cfg
+	o.HTTP = &http.Client{Timeout: timeout, Transport: tr}
+	return o, nil
 }
 
 func (o *OpenSearch) do(ctx context.Context, method, path string, body []byte, ct string) (int, []byte, error) {

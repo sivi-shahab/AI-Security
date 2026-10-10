@@ -1,5 +1,7 @@
 # Event ingest (spec §5.1): Kafka -> OpenSearch. Replicas share the topic's partitions via the consumer group.
-# Secret event-ingest (out of band): KAFKA_BROKERS, SCHEMA_REGISTRY_URL, OPENSEARCH_URL, OPENSEARCH_USER, OPENSEARCH_PASSWORD.
+# Secret event-ingest (out of band): KAFKA_BROKERS (TLS listener), SCHEMA_REGISTRY_URL, OPENSEARCH_URL (https), OPENSEARCH_USER,
+# OPENSEARCH_PASSWORD. Broker ACLs (only the PEPs produce decision events): `event-ingest kafka-acls`, run once as a Job
+# with the broker admin's KAFKA_* credentials (ticket 41).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -24,6 +26,14 @@ spec:
           image: registry.local/aisec/event-ingest:dev
           imagePullPolicy: Always
           envFrom: [{secretRef: {name: event-ingest}}]
+          env:
+            # Event bus (ticket 41): TLS + SASL/SCRAM as event-ingest; files from Secret event-ingest-bus (out of band).
+            - {name: KAFKA_SASL_USER, value: event-ingest}
+            - {name: KAFKA_SASL_PASSWORD_FILE, value: /bus/kafka-password}
+            - {name: KAFKA_CA_FILE, value: /bus/kafka-ca.crt}
+            - {name: OPENSEARCH_CA_FILE, value: /bus/opensearch-ca.crt}
+          volumeMounts:
+            - {name: bus, mountPath: /bus, readOnly: true}
           ports: [{containerPort: 8080, name: http}]  # /healthz, /metrics
           readinessProbe: {httpGet: {path: /healthz, port: http}}
           livenessProbe: {httpGet: {path: /healthz, port: http}}
@@ -34,6 +44,8 @@ spec:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities: {drop: [ALL]}
+      volumes:
+        - {name: bus, secret: {secretName: event-ingest-bus}}
 ---
 apiVersion: v1
 kind: Service

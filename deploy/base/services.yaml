@@ -24,17 +24,23 @@ spec:
           image: registry.local/aisec/control-plane:dev
           imagePullPolicy: Always
           ports: [{containerPort: 8080, name: http}]
-          # Secret control-plane (out of band): DATABASE_URL, KAFKA_BROKERS, SCHEMA_REGISTRY_URL, TENANT_ID, TENANT_PEPPER (ticket 37), PUBLIC_URL,
+          # Secret control-plane (out of band): DATABASE_URL, KAFKA_BROKERS (TLS listener), SCHEMA_REGISTRY_URL, TENANT_ID, TENANT_PEPPER (ticket 37), PUBLIC_URL,
           # OIDC_ISSUER, OIDC_AUDIENCE, OIDC_MFA_ACR, BREAK_GLASS_SUBS, SCIM_TOKEN_SHA256 (ADR-0002), MCP_GATEWAY_TOKEN_SHA256 (tickets 29-30), APPROVAL_TTL, APPROVAL_WEBHOOK_URL (ticket 30),
-          # OPENSEARCH_URL, OPENSEARCH_USER, OPENSEARCH_PASSWORD (policy simulation reads stored events),
+          # OPENSEARCH_URL (https), OPENSEARCH_USER, OPENSEARCH_PASSWORD (policy simulation reads stored events),
           # CATALOG_FEED_URL + CATALOG_FEED_PUBKEY_FILE (signed AI app catalog feed, ticket 16; optional).
           envFrom: [{secretRef: {name: control-plane}}]
           env:
             - {name: BUNDLE_SIGNING_KEY_FILE, value: /keys/bundle.key}
             - {name: INCIDENT_KEK_FILE, value: /kek/incident.kek}
+            # Event bus (ticket 41): TLS + SASL/SCRAM as control-plane; files from Secret control-plane-bus (out of band).
+            - {name: KAFKA_SASL_USER, value: control-plane}
+            - {name: KAFKA_SASL_PASSWORD_FILE, value: /bus/kafka-password}
+            - {name: KAFKA_CA_FILE, value: /bus/kafka-ca.crt}
+            - {name: OPENSEARCH_CA_FILE, value: /bus/opensearch-ca.crt}
           volumeMounts:
             - {name: bundle-signing, mountPath: /keys, readOnly: true}
             - {name: incident-kek, mountPath: /kek, readOnly: true}
+            - {name: bus, mountPath: /bus, readOnly: true}
           readinessProbe: {httpGet: {path: /healthz, port: http}}
           livenessProbe: {httpGet: {path: /healthz, port: http}}
           resources:
@@ -45,6 +51,7 @@ spec:
             readOnlyRootFilesystem: true
             capabilities: {drop: [ALL]}
       volumes:
+        - {name: bus, secret: {secretName: control-plane-bus}}
         # PEM EC P-256 private key, provisioned out of band (Vault/HSM-backed in production). Never in git.
         - {name: bundle-signing, secret: {secretName: policy-bundle-signing}}
         # 32 random bytes wrapping per-incident evidence keys (KMS/HSM in production).
@@ -81,11 +88,15 @@ spec:
         - name: ai-gateway
           image: registry.local/aisec/ai-gateway:dev
           imagePullPolicy: Always
-          # KAFKA_BROKERS, SCHEMA_REGISTRY_URL, TENANT_ID, TENANT_PEPPER, REDIS_URL, VAULT_TOKEN.
+          # KAFKA_BROKERS (TLS listener), SCHEMA_REGISTRY_URL, TENANT_ID, TENANT_PEPPER, REDIS_URL, VAULT_TOKEN.
           envFrom: [{secretRef: {name: ai-gateway}}]
           env:
             - {name: AIGW_CONFIG_FILE, value: /config/aigw.json}
             - {name: VAULT_URLS, value: http://token-vault}
+            # Event bus (ticket 41): TLS + SASL/SCRAM as ai-gateway; files from Secret ai-gateway-bus (out of band).
+            - {name: KAFKA_SASL_USER, value: ai-gateway}
+            - {name: KAFKA_SASL_PASSWORD_FILE, value: /bus/kafka-password}
+            - {name: KAFKA_CA_FILE, value: /bus/kafka-ca.crt}
           ports: [{containerPort: 8080, name: http}]
           readinessProbe: {httpGet: {path: /healthz, port: http}}
           livenessProbe: {httpGet: {path: /healthz, port: http}}
@@ -94,6 +105,7 @@ spec:
             # Provider API keys, one file per provider (aigw.json key_file). Written by the Vault agent in
             # production; the gateway re-reads a file when it changes, so rotation needs no restart.
             - {name: provider-keys, mountPath: /vault/secrets, readOnly: true}
+            - {name: bus, mountPath: /bus, readOnly: true}
           resources:
             requests: {cpu: 250m, memory: 128Mi}
             limits: {cpu: "2", memory: 512Mi}
@@ -131,6 +143,7 @@ spec:
       volumes:
         - {name: aigw-config, configMap: {name: ai-gateway-config}}
         - {name: provider-keys, secret: {secretName: ai-gateway-provider-keys}}
+        - {name: bus, secret: {secretName: ai-gateway-bus}}
         - {name: opa-config, configMap: {name: opa-config}}
         # bundle.pub: public half of policy-bundle-signing, provisioned with it.
         - {name: bundle-pubkey, configMap: {name: policy-bundle-pubkey}}

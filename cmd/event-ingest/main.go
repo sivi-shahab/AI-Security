@@ -2,9 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -14,10 +14,27 @@ import (
 	"aisec/internal/ingest"
 	"aisec/internal/privacy"
 	"aisec/internal/server"
+	"aisec/internal/siem"
 )
 
-// Env: KAFKA_BROKERS (comma-separated), SCHEMA_REGISTRY_URL, OPENSEARCH_URL, OPENSEARCH_USER, OPENSEARCH_PASSWORD.
+// Env: KAFKA_* (events.KafkaOpts), SCHEMA_REGISTRY_URL, OPENSEARCH_* (ingest.OpenSearchFromEnv).
 func main() {
+	// `event-ingest kafka-acls`: run once (Job) with the broker admin's KAFKA_* credentials.
+	if len(os.Args) > 1 && os.Args[1] == "kafka-acls" {
+		kafka, err := events.KafkaOpts(os.Getenv)
+		if err == nil {
+			var admin *kgo.Client
+			if admin, err = kgo.NewClient(kafka...); err == nil {
+				err = events.ApplyACLs(context.Background(), admin, grants)
+				admin.Close()
+			}
+		}
+		if err != nil {
+			_, _ = fmt.Fprintln(os.Stderr, "kafka-acls:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	log := privacy.NewLogger("event-ingest")
 	fail := func(msg string, err error) {
 		log.Error(msg, "err", err)
@@ -25,12 +42,15 @@ func main() {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 
-	kc, err := kgo.NewClient(
-		kgo.SeedBrokers(strings.Split(os.Getenv("KAFKA_BROKERS"), ",")...),
+	kafka, err := events.KafkaOpts(os.Getenv)
+	if err != nil {
+		fail("kafka config", err)
+	}
+	kc, err := kgo.NewClient(append(kafka,
 		kgo.ConsumerGroup(ingest.Group),
 		kgo.ConsumeTopics(events.Topic),
 		kgo.DisableAutoCommit(),
-	)
+	)...)
 	if err != nil {
 		fail("kafka client", err)
 	}
@@ -38,9 +58,9 @@ func main() {
 	if err != nil {
 		fail("schema registry client", err)
 	}
-	search := &ingest.OpenSearch{
-		URL: os.Getenv("OPENSEARCH_URL"), User: os.Getenv("OPENSEARCH_USER"), Password: os.Getenv("OPENSEARCH_PASSWORD"),
-		HTTP: &http.Client{Timeout: 30 * time.Second},
+	search, err := ingest.OpenSearchFromEnv(os.Getenv, 30*time.Second)
+	if err != nil {
+		fail("opensearch config", err)
 	}
 	if err := search.Setup(ctx); err != nil {
 		fail("opensearch setup", err)
@@ -60,4 +80,15 @@ func main() {
 	server.Run("event-ingest", mux)
 	cancel()
 	kc.Close()
+}
+
+// grants is who may do what on the event bus (ticket 41): only the PEPs produce decision events. Principals are the
+// services' SASL users (or mTLS certificate CNs); the broker refuses everything not listed (no
+// allow.everyone.if.no.acl.found).
+var grants = []events.Grant{
+	{Principal: "User:ai-gateway", Produce: []string{events.Topic}},
+	{Principal: "User:mcp-gateway", Produce: []string{events.Topic}},
+	{Principal: "User:event-ingest", Consume: []string{events.Topic}, Groups: []string{ingest.Group}},
+	{Principal: "User:control-plane", Consume: []string{events.Topic}, Groups: []string{"control-plane"}}, // cmd/control-plane consumerGroup
+	{Principal: "User:siem-export", Consume: []string{events.Topic}, Groups: []string{siem.Group}, Produce: []string{siem.DLQTopic}},
 }

@@ -23,6 +23,9 @@ import (
 // Group is siem-export's consumer group on the decision event topic.
 const Group = "siem-export"
 
+// DLQTopic holds records no SIEM sink accepted, sanitized, for replay.
+const DLQTopic = "aisec.siem.dlq.v1"
+
 // Exportable keeps the SIEM to what a SOC acts on: every non-allow decision and anything risky enough to matter.
 func Exportable(e events.Event, minRisk int) bool {
 	return e.Action != "allow" || e.RiskScore >= minRisk
