@@ -15,11 +15,13 @@ import (
 	"aisec/internal/mcpgw"
 	"aisec/internal/privacy"
 	"aisec/internal/server"
+	"aisec/internal/tokvault"
 )
 
 // Env: AIGW_CONFIG_FILE (aigw.Config: apps with gateway key hashes and limits, providers with vault key files),
 // OPA_URL (default http://127.0.0.1:8181, the sidecar), KAFKA_BROKERS, SCHEMA_REGISTRY_URL, TENANT_ID,
-// TENANT_PEPPER, REDIS_URL (rate limits and token quotas shared across replicas; without it, per replica).
+// TENANT_PEPPER, REDIS_URL (rate limits and token quotas shared across replicas; without it, per replica),
+// VAULT_URLS (comma-separated token-vault URLs, tried in order; without it, tokenize redacts) and VAULT_TOKEN.
 func main() {
 	log := privacy.NewLogger("ai-gateway")
 	fail := func(msg string, err error) {
@@ -57,13 +59,17 @@ func main() {
 		}
 		count = aigw.RedisCounter(redis.NewClient(opt))
 	}
+	var vault *tokvault.Client
+	if u := os.Getenv("VAULT_URLS"); u != "" {
+		vault = &tokvault.Client{URLs: strings.Split(u, ","), Token: os.Getenv("VAULT_TOKEN"), HTTP: &http.Client{Timeout: 2 * time.Second}}
+	}
 	opaURL := os.Getenv("OPA_URL")
 	if opaURL == "" {
 		opaURL = "http://127.0.0.1:8181"
 	}
 	opa := &mcpgw.OPA{URL: opaURL, HTTP: &http.Client{Timeout: 2 * time.Second}}
 	gw := &aigw.Gateway{
-		Apps: cfg.Apps, Providers: providers, Decide: opa.Decide, Key: (&aigw.KeyFiles{}).Key, Count: count,
+		Apps: cfg.Apps, Providers: providers, Decide: opa.Decide, Key: (&aigw.KeyFiles{}).Key, Count: count, Vault: vault,
 		Emit: func(ctx context.Context, e events.Event) error {
 			ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 			defer cancel()

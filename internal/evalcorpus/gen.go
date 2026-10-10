@@ -481,4 +481,3 @@ func Synthetic(seed uint64) (pii, injection, benign []Sample) {
 	}
 	return pii, injection, benign
 }
-

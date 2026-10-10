@@ -25,7 +25,7 @@ workflow:
 .services: &services
   parallel:
     matrix:
-      - SERVICE: [control-plane, ai-gateway, detection-svc, event-ingest, siem-export, mcp-gateway, connector-worker]
+      - SERVICE: [control-plane, ai-gateway, detection-svc, event-ingest, siem-export, mcp-gateway, connector-worker, token-vault]
         DOCKERFILE: build/go.Dockerfile
       - SERVICE: model-inference
         DOCKERFILE: services/model-inference/Dockerfile

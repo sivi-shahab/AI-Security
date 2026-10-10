@@ -105,3 +105,60 @@ func Wanted(globs []string, typ string) bool {
 	}
 	return false
 }
+
+// Finding is one detector match with the text it covers (offsets into Content.Text).
+type Finding struct {
+	detect.Match
+	Value string
+}
+
+// Findings are the sensitive-data matches (not injection evidence) and their text.
+func (c *Content) Findings() []Finding {
+	var fs []Finding
+	for _, m := range c.Res.Matches {
+		fs = append(fs, Finding{m, c.Text[m.Span[0]:m.Span[1]]})
+	}
+	return fs
+}
+
+// Rewrite replaces findings in place, by their span in Content.Text (FPE tokens, labels). Spans not inside one leaf
+// are left alone.
+func (c *Content) Rewrite(repl map[[2]int]string) {
+	for _, l := range c.leaves {
+		var spans [][2]int
+		for sp := range repl {
+			if sp[0] >= l.off && sp[1] <= l.off+len(l.s) {
+				spans = append(spans, sp)
+			}
+		}
+		if len(spans) == 0 {
+			continue
+		}
+		sort.Slice(spans, func(i, j int) bool { return spans[i][0] < spans[j][0] })
+		var b strings.Builder
+		at := 0
+		for _, sp := range spans {
+			a, e := sp[0]-l.off, sp[1]-l.off
+			if a < at {
+				continue
+			}
+			b.WriteString(l.s[at:a])
+			b.WriteString(repl[sp])
+			at = e
+		}
+		b.WriteString(l.s[at:])
+		l.set(b.String())
+	}
+}
+
+// Replace rewrites every leaf with fn (e.g. detokenisation of a response).
+func (c *Content) Replace(fn func(string) string) {
+	for _, l := range c.leaves {
+		if n := fn(l.s); n != l.s {
+			l.set(n)
+		}
+	}
+}
+
+// Label is what redaction puts in place of a finding.
+func Label(typ string) string { return "[REDACTED:" + typ + "]" }

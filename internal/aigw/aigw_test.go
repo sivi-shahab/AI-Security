@@ -496,13 +496,13 @@ func TestRefusals(t *testing.T) {
 		status              int
 		code                string
 	}{
-		"no key":          {"openai", "v1/chat/completions", "", chat, 401, "invalid_gateway_key"},
-		"wrong key":       {"openai", "v1/chat/completions", "sk-real-openai-key", chat, 401, "invalid_gateway_key"},
-		"provider denied": {"anthropic", "v1/messages", keyStrict, chat, 403, "provider_not_allowed"},
-		"unknown API":     {"openai", "v1/files", keyChat, chat, 404, "unsupported_endpoint"},
+		"no key":           {"openai", "v1/chat/completions", "", chat, 401, "invalid_gateway_key"},
+		"wrong key":        {"openai", "v1/chat/completions", "sk-real-openai-key", chat, 401, "invalid_gateway_key"},
+		"provider denied":  {"anthropic", "v1/messages", keyStrict, chat, 403, "provider_not_allowed"},
+		"unknown API":      {"openai", "v1/files", keyChat, chat, 404, "unsupported_endpoint"},
 		"stream responses": {"openai", "v1/responses", keyChat, map[string]any{"model": "m", "stream": true, "input": "hi"}, 400, "streaming_unavailable"},
 		"gemini not sse":   {"gemini", "v1beta/models/g:streamGenerateContent", keyChat, map[string]any{"contents": []any{}}, 400, ""},
-		"not JSON":        {"openai", "v1/chat/completions", keyChat, "not json", 400, "invalid_json"},
+		"not JSON":         {"openai", "v1/chat/completions", keyChat, "not json", 400, "invalid_json"},
 	} {
 		r := e.do(c.provider, c.path, c.key, c.body)
 		code, _ := r.body["error"].(map[string]any)["code"].(string)

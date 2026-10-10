@@ -3,9 +3,6 @@
 package incident
 
 import (
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"slices"
@@ -13,6 +10,7 @@ import (
 	"time"
 
 	"aisec/internal/events"
+	sealpkg "aisec/internal/seal"
 )
 
 type State string
@@ -92,38 +90,9 @@ func DedupKey(e events.Event) string {
 	return strings.Join([]string{e.PrincipalID, e.AppID, strings.Join(slices.Compact(classes), ","), strings.Join(rules, ",")}, "|")
 }
 
-// seal / open: AES-256-GCM with a random nonce prefix. aad binds the ciphertext to where it belongs, so a wrapped
-// DEK or evidence blob copied to another incident does not decrypt.
-func seal(key, plaintext, aad []byte) ([]byte, error) {
-	gcm, err := newGCM(key)
-	if err != nil {
-		return nil, err
-	}
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err := rand.Read(nonce); err != nil {
-		return nil, err
-	}
-	return gcm.Seal(nonce, nonce, plaintext, aad), nil
-}
-
-func open(key, sealed, aad []byte) ([]byte, error) {
-	gcm, err := newGCM(key)
-	if err != nil {
-		return nil, err
-	}
-	if len(sealed) < gcm.NonceSize() {
-		return nil, errors.New("ciphertext too short")
-	}
-	return gcm.Open(nil, sealed[:gcm.NonceSize()], sealed[gcm.NonceSize():], aad)
-}
-
-func newGCM(key []byte) (cipher.AEAD, error) {
-	if len(key) != 32 {
-		return nil, fmt.Errorf("key must be 32 bytes, got %d", len(key))
-	}
-	b, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
-	return cipher.NewGCM(b)
-}
+// seal / open: AES-256-GCM (internal/seal). aad binds the ciphertext to where it belongs, so a wrapped DEK or
+// evidence blob copied to another incident does not decrypt.
+var (
+	seal = sealpkg.Seal
+	open = sealpkg.Open
+)

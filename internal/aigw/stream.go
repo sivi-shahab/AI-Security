@@ -235,11 +235,18 @@ func (s *streamer) window(ch *channel, final bool) bool {
 	cut := len(ch.pending)
 	if !final {
 		cut -= holdback
+		spans := make([][2]int, 0, len(res.Matches))
+		for _, m := range res.Matches {
+			spans = append(spans, [2]int{m.Span[0] - len(ctx), m.Span[1] - len(ctx)})
+		}
+		for sp := range s.c.tokenSpans(ch.pending) { // nor half of a token the gateway issued
+			spans = append(spans, sp)
+		}
 		for moved := true; moved; { // never release half of a finding
 			moved = false
-			for _, m := range res.Matches {
-				if a, b := m.Span[0]-len(ctx), m.Span[1]-len(ctx); a < cut && b > cut {
-					cut, moved = max(a, 0), true
+			for _, sp := range spans {
+				if sp[0] < cut && sp[1] > cut {
+					cut, moved = max(sp[0], 0), true
 				}
 			}
 		}
@@ -269,6 +276,9 @@ func (s *streamer) window(ch *channel, final bool) bool {
 	default:
 		s.block(d.ReasonCodes)
 		return false
+	}
+	if s.c.app.Detokenize && len(s.c.tokens) > 0 {
+		out = s.c.detokenizer(s.ctx, out)(out)
 	}
 	if out != "" {
 		s.write(ch.make(out))

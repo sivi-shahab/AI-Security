@@ -81,10 +81,11 @@ spec:
         - name: ai-gateway
           image: registry.local/aisec/ai-gateway:dev
           imagePullPolicy: Always
-          # KAFKA_BROKERS, SCHEMA_REGISTRY_URL, TENANT_ID, TENANT_PEPPER, REDIS_URL.
+          # KAFKA_BROKERS, SCHEMA_REGISTRY_URL, TENANT_ID, TENANT_PEPPER, REDIS_URL, VAULT_TOKEN.
           envFrom: [{secretRef: {name: ai-gateway}}]
           env:
             - {name: AIGW_CONFIG_FILE, value: /config/aigw.json}
+            - {name: VAULT_URLS, value: http://token-vault}
           ports: [{containerPort: 8080, name: http}]
           readinessProbe: {httpGet: {path: /healthz, port: http}}
           livenessProbe: {httpGet: {path: /healthz, port: http}}
@@ -228,4 +229,57 @@ metadata:
   name: model-inference
 spec:
   selector: {app: model-inference}
+  ports: [{port: 80, targetPort: http, name: http}]
+---
+# Tokenization vault (ticket 24): two replicas, active-passive. Only the replica holding the Postgres advisory lock is
+# ready, so the Service routes to it; the other takes over when it dies.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: token-vault
+  labels: {app: token-vault}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: token-vault}
+  template:
+    metadata:
+      labels: {app: token-vault}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: token-vault
+          image: registry.local/aisec/token-vault:dev
+          imagePullPolicy: Always
+          # DATABASE_URL, TENANT_ID, VAULT_CLIENT_TOKEN_SHA256.
+          envFrom: [{secretRef: {name: token-vault}}]
+          env:
+            - {name: VAULT_KEK_FILE, value: /kek/vault.kek}
+          ports: [{containerPort: 8080, name: http}]
+          readinessProbe: {httpGet: {path: /ready, port: http}, periodSeconds: 2}
+          livenessProbe: {httpGet: {path: /healthz, port: http}}
+          volumeMounts:
+            - {name: vault-kek, mountPath: /kek, readOnly: true}
+          resources:
+            requests: {cpu: 100m, memory: 64Mi}
+            limits: {cpu: "1", memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+      volumes:
+        # 32 raw bytes, provisioned out of band (Vault/HSM-backed in production). Never in git.
+        - {name: vault-kek, secret: {secretName: token-vault-kek}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: token-vault
+spec:
+  selector: {app: token-vault}
   ports: [{port: 80, targetPort: http, name: http}]

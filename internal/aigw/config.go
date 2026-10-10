@@ -33,6 +33,10 @@ type App struct {
 	// Canary plants a per-app secret marker in the system prompt; an answer that repeats it is a system prompt
 	// leak (FR-PSEC-5). Long verbatim runs of the system prompt are caught with or without it.
 	Canary bool `json:"canary"`
+	// Detokenize: this app's callers may see the values behind FPE tokens in answers (ticket 24); otherwise they
+	// get the tokens. TokenTTLMinutes is how long a token can be turned back (default 60).
+	Detokenize      bool `json:"detokenize"`
+	TokenTTLMinutes int  `json:"token_ttl_minutes"`
 	// Limits (FR-PSEC-9); 0 = unlimited. Users are the X-AISec-User the app forwards.
 	RPM              int64 `json:"rpm"`
 	UserRPM          int64 `json:"user_rpm"`

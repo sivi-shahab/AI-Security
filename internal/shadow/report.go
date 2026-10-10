@@ -89,7 +89,9 @@ func (b *Baseline) Report(now time.Time, top int) Report {
 	for p, u := range b.user {
 		r.Users = append(r.Users, UserRow{User: p, Unit: u.unit, Requests: u.requests, Apps: topKeys(u.apps, top)})
 	}
-	slices.SortFunc(r.Users, func(x, y UserRow) int { return cmp.Or(cmp.Compare(y.Requests, x.Requests), cmp.Compare(x.User, y.User)) })
+	slices.SortFunc(r.Users, func(x, y UserRow) int {
+		return cmp.Or(cmp.Compare(y.Requests, x.Requests), cmp.Compare(x.User, y.User))
+	})
 	r.Users = r.Users[:min(top, len(r.Users))]
 	for name, u := range b.unit {
 		r.Units = append(r.Units, UnitRow{Unit: name, Requests: u.requests, Users: len(u.users), TopApps: topKeys(u.apps, 5)})

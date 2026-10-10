@@ -26,6 +26,7 @@ import (
 	"aisec/internal/events"
 	"aisec/internal/inspect"
 	"aisec/internal/mcpgw"
+	"aisec/internal/tokvault"
 )
 
 const (
@@ -43,6 +44,7 @@ type Gateway struct {
 	Emit      func(ctx context.Context, e events.Event) error
 	Key       func(p Provider) (string, error) // provider key from the vault (KeyFiles.Key)
 	Count     Counter
+	Vault     *tokvault.Client // tokenize/detokenize (ticket 24); nil = tokenize redacts
 	Upstream  *http.Client
 	Pepper    []byte
 	TenantID  string
@@ -70,6 +72,7 @@ type call struct {
 	decision string // last decision id, for X-AISec-Decision-Id
 	action   string // strictest action applied
 	leak     leakCheck
+	tokens   map[string]issued // FPE tokens put in this request, by their digits
 }
 
 func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -79,7 +82,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, errorBody(KindOpenAI, 404, "unknown_provider", "Unknown provider route."))
 		return
 	}
-	c := &call{g: g, w: w, p: p, trace: traceID(r), action: "allow"}
+	c := &call{g: g, w: w, p: p, trace: traceID(r), action: "allow", tokens: map[string]issued{}}
 	ep, ok := findEndpoint(p.Kind, r.Method, rest)
 	if !ok {
 		c.refuse(http.StatusNotFound, "unsupported_endpoint", "This API is not available through the AISec gateway.")
@@ -174,6 +177,15 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if !c.enforce(ctx, "response", rb, ep.respRoots, rin, c.leak.score(rin.Text)) {
 				return
 			}
+			if c.app.Detokenize && len(c.tokens) > 0 {
+				back := c.content(rb, ep.respRoots)
+				back.Replace(c.detokenizer(ctx, back.Text))
+				for _, k := range ep.respRoots {
+					if v, ok := back.sub[k]; ok {
+						rb[k] = v
+					}
+				}
+			}
 			if out, err = json.Marshal(rb); err != nil {
 				c.refuse(http.StatusInternalServerError, "internal_error", "Response could not be re-encoded.")
 				return
@@ -239,16 +251,20 @@ func (c *call) enforce(ctx context.Context, direction string, body map[string]an
 	switch d.Action {
 	case "allow", "warn":
 		return true
-	case "redact", "tokenize": // ponytail: tokenize redacts until the token vault (ticket 24)
-		globs := obligationClasses(d)
-		in.Redact(globs)
+	case "redact", "tokenize":
+		c.protect(ctx, d, in.Content)
 		for _, k := range roots {
 			if v, ok := in.sub[k]; ok {
 				body[k] = v
 			}
 		}
-		// ADR-0001: when redaction cannot be applied the PEP blocks. Check that nothing it had to remove is left.
-		if left := c.content(body, roots); slices.ContainsFunc(left.Res.Matches, func(m detect.Match) bool { return inspect.Wanted(globs, m.Type) }) {
+		// ADR-0001: when redaction cannot be applied the PEP blocks. Check that nothing it had to remove is left
+		// (tokens it issued may look like identifiers: they are what it put there).
+		globs := obligationClasses(d)
+		if left := c.content(body, roots); slices.ContainsFunc(left.Findings(), func(f inspect.Finding) bool {
+			_, issued := c.tokens[digitsOf(f.Value)]
+			return inspect.Wanted(globs, f.Type) && !issued
+		}) {
 			c.g.Log.Warn("redaction incomplete, blocking", "decision", eid)
 			c.action = "block"
 			c.refuse(http.StatusForbidden, "aisec_redaction_failed", blockMessage(what, []string{"REDACTION_FAILED"}, eid))
