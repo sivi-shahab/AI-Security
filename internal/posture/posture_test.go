@@ -199,6 +199,11 @@ func TestReconciliation(t *testing.T) {
 		defer func() { _ = resp.Body.Close() }()
 		return io.ReadAll(resp.Body)
 	}, Apps: apps, Incidents: incidents, Policies: ls, Agents: reg}
+	// Ticket 43: a server seen reaching a provider without the gateway is a finding.
+	if _, err := apps.ReportBypass(ctx, "secadmin", []catalog.Bypass{{Server: "10.20.3.7", Domain: "api.openai.com", AppID: "chatgpt",
+		Requests: 3, FirstSeen: now.Add(-2 * time.Hour), LastSeen: now.Add(-time.Hour)}}); err != nil {
+		t.Fatal(err)
+	}
 	rep, err := src.Compute(ctx, now)
 	if err != nil {
 		t.Fatal(err)
@@ -267,6 +272,9 @@ func TestReconciliation(t *testing.T) {
 	}
 	if rep.Inventory.NotInCatalog != 1 || rep.Inventory.BySanction["blocked"] != 1 || rep.Inventory.ReviewOverdue != int(overdue) {
 		t.Errorf("inventory: %+v", rep.Inventory)
+	}
+	if last := rep.Metrics[len(rep.Metrics)-1]; len(rep.GatewayBypass) != 1 || last.Value == nil || *last.Value != 1 || last.Target != "0" {
+		t.Errorf("gateway bypass: %+v, metric %+v", rep.GatewayBypass, last)
 	}
 	if rep.Overall == nil || len(rep.Metrics) < 10 || rep.Metrics[0].Value == nil {
 		t.Errorf("overall/metrics: %v %+v", rep.Overall, rep.Metrics)

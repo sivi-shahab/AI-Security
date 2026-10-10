@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -103,5 +104,32 @@ func Routes(rt *authz.Router, s *Store, feedPubPEM []byte, now func() time.Time)
 		}
 		v, err := s.ImportSigned(r.Context(), c.Username, []byte(b.Feed), b.Signature, feedPubPEM)
 		reply(w, 200, map[string]any{"version": v}, err)
+	})
+
+	// Ticket 43: the provider domains the network team allows only from the AI gateway's egress IPs. JSON, or
+	// ?format=txt for a firewall/SWG FQDN object (one domain per line; each covers its subdomains).
+	rt.Handle("GET /catalog/egress", authz.ConfigRead, func(w http.ResponseWriter, r *http.Request, _ authz.Caller) {
+		apps, err := s.Apps(r.Context())
+		entries := ProviderDomains(apps)
+		if err == nil && r.URL.Query().Get("format") == "txt" {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			for _, e := range entries {
+				_, _ = fmt.Fprintln(w, e.Domain)
+			}
+			return
+		}
+		reply(w, 200, map[string]any{"items": entries}, err)
+	})
+	// Findings from shadow-baseline -servers (the gateway_bypass list of its JSON report).
+	rt.Handle("POST /catalog/gateway-bypass", authz.ConfigWrite, func(w http.ResponseWriter, r *http.Request, c authz.Caller) {
+		var b struct {
+			GatewayBypass []Bypass `json:"gateway_bypass"`
+		}
+		if err := decode(r, &b); err != nil {
+			reply(w, 0, nil, err)
+			return
+		}
+		n, err := s.ReportBypass(r.Context(), c.Username, b.GatewayBypass)
+		reply(w, 200, map[string]any{"received": len(b.GatewayBypass), "new": n}, err)
 	})
 }

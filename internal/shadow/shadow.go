@@ -11,8 +11,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/netip"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -24,6 +26,7 @@ import (
 type Record struct {
 	Time      time.Time
 	User      string // proxy user, or the client IP when the log has none
+	Client    string // client IP, when the log has one (gateway bypass, ticket 43)
 	Host      string
 	Method    string
 	Path      string
@@ -49,7 +52,7 @@ func Squid(line string) (Record, bool, error) {
 		return Record{}, false, errLine
 	}
 	sec, _ := strconv.ParseInt(m[1], 10, 64)
-	r := Record{Time: time.Unix(sec, 0).UTC(), User: m[5], Method: m[3]}
+	r := Record{Time: time.Unix(sec, 0).UTC(), User: m[5], Client: m[2], Method: m[3]}
 	if r.User == "-" {
 		r.User = m[2]
 	}
@@ -85,13 +88,13 @@ func DNS(line string) (Record, bool, error) {
 	if err != nil {
 		return Record{}, false, errLine
 	}
-	return Record{Time: t.UTC(), User: m[1], Host: strings.TrimSuffix(m[2], ".")}, true, nil
+	return Record{Time: t.UTC(), User: m[1], Client: m[1], Host: strings.TrimSuffix(m[2], ".")}, true, nil
 }
 
 // JSONFields names the keys of a JSON-lines export (Zscaler NSS, Netskope, Palo Alto, Fortinet can all emit one).
-type JSONFields struct{ Time, User, Host, URL, Method, UserAgent string }
+type JSONFields struct{ Time, User, Client, Host, URL, Method, UserAgent string }
 
-var DefaultJSONFields = JSONFields{Time: "time", User: "user", Host: "host", URL: "url", Method: "method", UserAgent: "user_agent"}
+var DefaultJSONFields = JSONFields{Time: "time", User: "user", Client: "client_ip", Host: "host", URL: "url", Method: "method", UserAgent: "user_agent"}
 
 // ParseJSONFields reads "time=ts,user=login,..." over the defaults.
 func ParseJSONFields(s string) (JSONFields, error) {
@@ -101,9 +104,9 @@ func ParseJSONFields(s string) (JSONFields, error) {
 			continue
 		}
 		k, v, ok := strings.Cut(kv, "=")
-		dst := map[string]*string{"time": &f.Time, "user": &f.User, "host": &f.Host, "url": &f.URL, "method": &f.Method, "user_agent": &f.UserAgent}[k]
+		dst := map[string]*string{"time": &f.Time, "user": &f.User, "client": &f.Client, "host": &f.Host, "url": &f.URL, "method": &f.Method, "user_agent": &f.UserAgent}[k]
 		if !ok || dst == nil || v == "" {
-			return f, fmt.Errorf("field mapping %q: want name=key with name in time,user,host,url,method,user_agent", kv)
+			return f, fmt.Errorf("field mapping %q: want name=key with name in time,user,client,host,url,method,user_agent", kv)
 		}
 		*dst = v
 	}
@@ -121,7 +124,7 @@ func JSONL(f JSONFields) Parser {
 			return Record{}, false, errLine
 		}
 		str := func(k string) string { s, _ := m[k].(string); return s }
-		r := Record{User: str(f.User), Host: str(f.Host), Method: str(f.Method), UserAgent: str(f.UserAgent)}
+		r := Record{User: str(f.User), Client: str(f.Client), Host: str(f.Host), Method: str(f.Method), UserAgent: str(f.UserAgent)}
 		if u := str(f.URL); u != "" {
 			h, p := splitURL(u)
 			r.Path = p
@@ -190,6 +193,12 @@ type Baseline struct {
 	unit                                                  map[string]*unitAgg
 	week                                                  map[string]*weekAgg
 	cache                                                 map[string]match
+
+	// Gateway bypass (ticket 43): server subnets, the AI gateway's egress addresses, and what was seen.
+	servers  []netip.Prefix
+	gateways map[netip.Addr]bool
+	egress   []catalog.EgressEntry
+	bypass   map[[2]string]*catalog.Bypass
 }
 
 type match struct {
@@ -245,6 +254,38 @@ func NewBaseline(apps []catalog.App, pepper []byte, units map[string]string) (*B
 	return b, nil
 }
 
+// WatchBypass turns on gateway bypass findings: a client in one of the server subnets, other than a gateway
+// egress address, reaching a provider API domain (catalog.ProviderDomains). Logs without client addresses (some
+// JSON exports) cannot show it.
+func (b *Baseline) WatchBypass(servers []netip.Prefix, gateways []netip.Addr) {
+	b.servers, b.gateways, b.egress, b.bypass = servers, map[netip.Addr]bool{}, catalog.ProviderDomains(b.list), map[[2]string]*catalog.Bypass{}
+	for _, g := range gateways {
+		b.gateways[g.Unmap()] = true
+	}
+}
+
+func (b *Baseline) checkBypass(r Record) {
+	if len(b.servers) == 0 {
+		return
+	}
+	ip, err := netip.ParseAddr(r.Client)
+	if err != nil || b.gateways[ip.Unmap()] || !slices.ContainsFunc(b.servers, func(p netip.Prefix) bool { return p.Contains(ip.Unmap()) }) {
+		return
+	}
+	e, ok := catalog.ProviderFor(b.egress, r.Host)
+	if !ok {
+		return
+	}
+	k := [2]string{ip.Unmap().String(), e.Domain}
+	f := b.bypass[k]
+	if f == nil {
+		f = &catalog.Bypass{Server: k[0], Domain: e.Domain, AppID: e.AppID, FirstSeen: r.Time, LastSeen: r.Time}
+		b.bypass[k] = f
+	}
+	f.Requests++
+	f.FirstSeen, f.LastSeen = minTime(f.FirstSeen, r.Time), maxTime(f.LastSeen, r.Time)
+}
+
 // Line feeds one log line through p.
 func (b *Baseline) Line(p Parser, line string) {
 	r, ok, err := p(line)
@@ -262,6 +303,7 @@ func (b *Baseline) Line(p Parser, line string) {
 func (b *Baseline) Add(r Record) {
 	b.requests++
 	b.days[r.Time.Format(time.DateOnly)] = true
+	b.checkBypass(r)
 	m := b.detect(r)
 	if !m.ok {
 		return

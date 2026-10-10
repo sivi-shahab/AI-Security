@@ -161,8 +161,10 @@ type Report struct {
 		ReviewOverdue int            `json:"review_overdue"`
 		NotInCatalog  int            `json:"observed_not_in_catalog"`
 	} `json:"inventory"`
-	Agents  agents.Summary `json:"agents"`
-	Metrics []Metric       `json:"metrics"`
+	Agents agents.Summary `json:"agents"`
+	// Servers that reached AI providers without the AI gateway in the window (ticket 43): each is a finding.
+	GatewayBypass []catalog.Bypass `json:"gateway_bypass"`
+	Metrics       []Metric         `json:"metrics"`
 }
 
 const (
@@ -309,7 +311,17 @@ func (src Sources) Compute(ctx context.Context, now time.Time) (Report, error) {
 		return r, err
 	}
 	r.Agents = reg
+	if r.GatewayBypass, err = src.Apps.Bypasses(ctx, now.Add(-Window)); err != nil {
+		return r, err
+	}
 	r.Metrics = metrics(apps, r.Incidents, reg)
+	servers := map[string]bool{}
+	for _, b := range r.GatewayBypass {
+		servers[b.Server] = true
+	}
+	bypassing := float64(len(servers))
+	r.Metrics = append(r.Metrics, Metric{Name: "Servers reaching AI providers without the AI gateway", Target: "0", Value: &bypassing, Status: "measured",
+		Note: fmt.Sprintf("%d server/domain pairs in the window, from SWG/DNS logs (shadow-baseline -servers)", len(r.GatewayBypass))})
 	return r, nil
 }
 

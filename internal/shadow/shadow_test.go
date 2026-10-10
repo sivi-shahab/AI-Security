@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/netip"
 	"slices"
 	"strings"
 	"testing"
@@ -23,15 +24,15 @@ func TestParsers(t *testing.T) {
 		err  bool
 	}{
 		{"squid CONNECT", Squid, "1791187201.123    120 10.0.0.5 TCP_TUNNEL/200 3946 CONNECT api.openai.com:443 alice HIER_DIRECT/1.2.3.4 -",
-			Record{Time: ts, User: "alice", Host: "api.openai.com", Method: "CONNECT"}, true, false},
+			Record{Time: ts, User: "alice", Client: "10.0.0.5", Host: "api.openai.com", Method: "CONNECT"}, true, false},
 		{"squid bumped URL, no user, syslog prefix", Squid, "Oct  5 08:00:01 px1 squid[42]: 1791187201.5 80 10.0.0.9 TCP_MISS/200 512 POST https://api.anthropic.com/v1/messages - HIER_DIRECT/1.2.3.4 application/json",
-			Record{Time: ts, User: "10.0.0.9", Host: "api.anthropic.com", Method: "POST", Path: "/v1/messages"}, true, false},
+			Record{Time: ts, User: "10.0.0.9", Client: "10.0.0.9", Host: "api.anthropic.com", Method: "POST", Path: "/v1/messages"}, true, false},
 		{"squid comment", Squid, "# rotated", Record{}, false, false},
 		{"squid garbage", Squid, "not a log line", Record{}, false, true},
 		{"bind", DNS, "05-Oct-2026 08:00:01.123 queries: info: client @0x7f3a 10.0.0.5#53211 (chatgpt.com): query: chatgpt.com IN A +E(0)K (10.0.0.1)",
-			Record{Time: ts, User: "10.0.0.5", Host: "chatgpt.com"}, true, false},
+			Record{Time: ts, User: "10.0.0.5", Client: "10.0.0.5", Host: "chatgpt.com"}, true, false},
 		{"bind behind RFC 5424 syslog", DNS, "<30>1 2026-10-05T08:00:01Z ns1 named 77 - - client 10.0.0.6#5300 (claude.ai.): query: claude.ai. IN AAAA +",
-			Record{Time: ts, User: "10.0.0.6", Host: "claude.ai"}, true, false},
+			Record{Time: ts, User: "10.0.0.6", Client: "10.0.0.6", Host: "claude.ai"}, true, false},
 		{"bind other message", DNS, "05-Oct-2026 08:00:01.123 general: info: zone loaded", Record{}, false, false},
 		{"bind without a year", DNS, "Oct  5 08:00:01 ns1 named[77]: client 10.0.0.6#5300 (claude.ai): query: claude.ai IN A +", Record{}, false, true},
 		{"jsonl mapped, epoch ms", JSONL(JSONFields{Time: "ts", User: "login", Host: "hostname", URL: "url", Method: "method", UserAgent: "ua"}),
@@ -201,5 +202,56 @@ func TestSeedCatalog(t *testing.T) {
 		if d.AppID != want {
 			t.Errorf("%s → %q, want %q", host, d.AppID, want)
 		}
+	}
+}
+
+// Ticket 43: a server reaching an AI provider's API domain without the gateway is a finding; the gateway itself,
+// workstations (users, via the SWG: shadow AI, not bypass), other hosts and non-API apps are not.
+func TestGatewayBypass(t *testing.T) {
+	b, err := NewBaseline(catalog.SeedApps(), pepper, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.WatchBypass([]netip.Prefix{netip.MustParsePrefix("10.20.0.0/16"), netip.MustParsePrefix("fd00:20::/32")}, []netip.Addr{netip.MustParseAddr("10.20.0.5")})
+	sq := func(sec int, client, host string) string {
+		return fmt.Sprintf("%d.000 100 %s TCP_TUNNEL/200 100 CONNECT %s:443 - HIER_DIRECT/1.2.3.4 -", 1791187200+sec, client, host)
+	}
+	for _, l := range []string{
+		sq(0, "10.20.3.7", "api.openai.com"),  // bypass
+		sq(60, "10.20.3.7", "api.openai.com"), // same pair
+		sq(120, "10.20.3.7", "eu.api.openai.com"),
+		sq(0, "10.20.0.5", "api.openai.com"),        // the gateway
+		sq(0, "10.50.1.9", "api.openai.com"),        // a workstation
+		sq(0, "10.20.3.8", "repo.maven.apache.org"), // not AI
+		sq(0, "10.20.3.8", "www.midjourney.com"),    // AI, but no API in the catalog
+	} {
+		b.Line(Squid, l)
+	}
+	b.Line(DNS, "05-Oct-2026 08:00:01.123 queries: info: client @0x7f 10.20.9.1#53211 (api.anthropic.com): query: api.anthropic.com IN A +E(0)K (10.0.0.1)")
+	b.Line(JSONL(DefaultJSONFields), `{"time": "2026-10-05T08:00:01Z", "client_ip": "fd00:20::15", "host": "generativelanguage.googleapis.com"}`)
+	b.Line(JSONL(DefaultJSONFields), `{"time": "2026-10-05T08:00:01Z", "user": "x", "host": "api.mistral.ai"}`) // no client address: cannot tell
+
+	r := b.Report(time.Now(), 10)
+	got := map[string]int{}
+	for _, f := range r.GatewayBypass {
+		got[f.Server+" "+f.Domain+" "+f.AppID] = f.Requests
+	}
+	want := map[string]int{"10.20.3.7 api.openai.com chatgpt": 3, "10.20.9.1 api.anthropic.com claude": 1, "fd00:20::15 generativelanguage.googleapis.com gemini": 1}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("bypass %v, want %v", got, want)
+	}
+	if f := r.GatewayBypass[0]; f.LastSeen.Sub(f.FirstSeen) != 2*time.Minute {
+		t.Errorf("first/last seen %v %v", f.FirstSeen, f.LastSeen)
+	}
+	var md bytes.Buffer
+	_ = r.Markdown(&md)
+	if !strings.Contains(md.String(), "| 10.20.3.7 | api.openai.com | chatgpt | 3 |") || strings.Contains(md.String(), "10.50.1.9") {
+		t.Errorf("markdown:\n%s", md.String())
+	}
+	// Off by default: no subnets, no findings.
+	off, _ := NewBaseline(catalog.SeedApps(), pepper, nil)
+	off.Line(Squid, sq(0, "10.20.3.7", "api.openai.com"))
+	if r := off.Report(time.Now(), 10); r.GatewayBypass != nil {
+		t.Errorf("findings without -servers: %v", r.GatewayBypass)
 	}
 }

@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"aisec/internal/catalog"
 )
 
 // Report is the shadow AI baseline. Users appear only as HMAC pseudonyms; units are organisational, not personal.
@@ -28,6 +30,8 @@ type Report struct {
 	Units          []UnitRow `json:"units"`
 	Weeks          []WeekRow `json:"weeks"`
 	Review         []Review  `json:"review_queue"`
+	// Servers that reached AI providers without the gateway (WatchBypass); feed to POST /catalog/gateway-bypass.
+	GatewayBypass []catalog.Bypass `json:"gateway_bypass,omitempty"`
 }
 
 type AppRow struct {
@@ -106,6 +110,12 @@ func (b *Baseline) Report(now time.Time, top int) Report {
 			Requests: v.requests, Users: len(v.users)})
 	}
 	slices.SortFunc(r.Review, func(x, y Review) int { return cmp.Or(cmp.Compare(y.Users, x.Users), cmp.Compare(x.Host, y.Host)) })
+	for _, f := range b.bypass {
+		r.GatewayBypass = append(r.GatewayBypass, *f)
+	}
+	slices.SortFunc(r.GatewayBypass, func(x, y catalog.Bypass) int {
+		return cmp.Or(cmp.Compare(y.Requests, x.Requests), cmp.Compare(x.Server, y.Server), cmp.Compare(x.Domain, y.Domain))
+	})
 	return r
 }
 
@@ -147,6 +157,13 @@ func (r Report) Markdown(w io.Writer) error {
 	p("| Host | Confidence | Sinyal | Kandidat | User | Request |\n|---|---:|---|---|---:|---:|\n")
 	for _, v := range r.Review {
 		p("| %s | %.2f | %s | %s | %d | %d |\n", v.Host, v.Confidence, strings.Join(v.Signals, ", "), strings.Join(v.Candidates, ", "), v.Users, v.Requests)
+	}
+	if len(r.GatewayBypass) > 0 {
+		p("\n## Gateway bypass: server langsung ke provider AI\n\nTrafik ini seharusnya lewat AI gateway (runbook `docs/runbooks/egress-ai-gateway.md`). ")
+		p("Kirim ke control-plane: `POST /catalog/gateway-bypass` dengan JSON laporan ini.\n\n| Server | Domain | App | Request | Pertama | Terakhir |\n|---|---|---|---:|---|---|\n")
+		for _, f := range r.GatewayBypass {
+			p("| %s | %s | %s | %d | %s | %s |\n", f.Server, f.Domain, f.AppID, f.Requests, f.FirstSeen.Format(time.RFC3339), f.LastSeen.Format(time.RFC3339))
+		}
 	}
 	_, err := io.WriteString(w, s.String())
 	return err

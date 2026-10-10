@@ -1,9 +1,13 @@
 // Command shadow-baseline measures shadow AI use from existing SWG/proxy/firewall/DNS logs before enforcement
 // (ticket 03, spec §1.5 baseline). It reads log files (plain or .gz, "-" for stdin), fingerprints each request
 // against the AI app catalog, and writes shadow-baseline.json and shadow-baseline.md to -out. Users are HMAC'd with
-// TENANT_PEPPER as they are read; no raw user or client IP reaches the output.
+// TENANT_PEPPER as they are read; no raw user or client IP reaches the output (except server addresses
+// in -servers subnets, below).
 //
 //	TENANT_PEPPER=... shadow-baseline -format squid -units units.csv -out report/ /var/log/squid/access.log*
+//
+// With -servers (and -gateways) it also lists servers reaching AI provider domains without the AI gateway (ticket
+// 43); their addresses are infrastructure and are reported as they are.
 package main
 
 import (
@@ -14,6 +18,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,14 +35,16 @@ func main() {
 	unitsFile := flag.String("units", "", "CSV of user (or client IP),unit")
 	out := flag.String("out", ".", "output directory")
 	top := flag.Int("top", 20, "users listed in the report")
+	servers := flag.String("servers", "", "server subnets, comma-separated CIDRs: their direct traffic to AI provider domains is a gateway bypass (ticket 43)")
+	gateways := flag.String("gateways", "", "AI gateway egress IPs, comma-separated (exempt from -servers)")
 	flag.Parse()
-	if err := run(*format, *fields, *catFile, *unitsFile, *out, *top, flag.Args()); err != nil {
+	if err := run(*format, *fields, *catFile, *unitsFile, *out, *top, *servers, *gateways, flag.Args()); err != nil {
 		fmt.Fprintln(os.Stderr, "shadow-baseline:", err)
 		os.Exit(1)
 	}
 }
 
-func run(format, fields, catFile, unitsFile, out string, top int, files []string) error {
+func run(format, fields, catFile, unitsFile, out string, top int, servers, gateways string, files []string) error {
 	var p shadow.Parser
 	switch format {
 	case "squid":
@@ -73,6 +80,28 @@ func run(format, fields, catFile, unitsFile, out string, top int, files []string
 	if err != nil {
 		return err
 	}
+	if servers != "" {
+		var nets []netip.Prefix
+		var gws []netip.Addr
+		for c := range strings.SplitSeq(servers, ",") {
+			p, err := netip.ParsePrefix(strings.TrimSpace(c))
+			if err != nil {
+				return fmt.Errorf("-servers: %w", err)
+			}
+			nets = append(nets, p.Masked())
+		}
+		for g := range strings.SplitSeq(gateways, ",") {
+			if g = strings.TrimSpace(g); g == "" {
+				continue
+			}
+			a, err := netip.ParseAddr(g)
+			if err != nil {
+				return fmt.Errorf("-gateways: %w", err)
+			}
+			gws = append(gws, a)
+		}
+		b.WatchBypass(nets, gws)
+	}
 	if len(files) == 0 {
 		files = []string{"-"}
 	}
@@ -98,6 +127,9 @@ func run(format, fields, catFile, unitsFile, out string, top int, files []string
 		return err
 	}
 	fmt.Fprintf(os.Stderr, "%d lines (%d unreadable), %d AI requests, %d apps, %d days\n", r.Lines, r.Unparsed, r.AIRequests, len(r.Apps), r.DaysCovered)
+	if len(r.GatewayBypass) > 0 {
+		fmt.Fprintf(os.Stderr, "warning: %d server/domain pairs reached AI providers without the gateway\n", len(r.GatewayBypass))
+	}
 	if !r.MeetsMinDays {
 		fmt.Fprintf(os.Stderr, "warning: logs cover %d days; the baseline needs %d\n", r.DaysCovered, shadow.MinDays)
 	}

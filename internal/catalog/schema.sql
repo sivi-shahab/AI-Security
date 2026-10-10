@@ -46,3 +46,15 @@ CREATE TABLE IF NOT EXISTS catalog.usage_seen (
   event_id  uuid PRIMARY KEY,
   day       date NOT NULL
 );
+
+-- Servers reaching AI provider domains without the AI gateway (ticket 43), from SWG/DNS logs via shadow-baseline.
+CREATE TABLE IF NOT EXISTS catalog.gateway_bypass (
+  server       text        NOT NULL,  -- address in a declared server subnet (infrastructure, not a person)
+  domain       text        NOT NULL,
+  app_id       text        NOT NULL,
+  requests     bigint      NOT NULL,
+  first_seen   timestamptz NOT NULL,
+  last_seen    timestamptz NOT NULL,
+  reported_by  text        NOT NULL,
+  PRIMARY KEY (server, domain)
+);
