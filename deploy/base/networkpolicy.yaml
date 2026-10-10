@@ -1,0 +1,159 @@
+# Network policy for namespace aisec (ticket 40, threat model G1): nothing in, nothing out, then one allow per flow of
+# spec §5.2. deploy/netpol_test.go checks every flow below is open and the ones that must stay closed are.
+# Namespaces outside aisec are matched by kubernetes.io/metadata.name: ingress-nginx (admin API, bucket
+# notifications), monitoring (Prometheus, Alertmanager), kube-system (DNS); change them in an overlay if the
+# cluster names them otherwise. Kubelet probes are not subject to these policies.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: default-deny}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: dns}
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}, podSelector: {matchLabels: {k8s-app: kube-dns}}}]
+      ports: [{port: 53, protocol: UDP}, {port: 53, protocol: TCP}]
+---
+# Data services outside the cluster (Postgres, Kafka, OpenSearch, Redis, Vault, Keycloak, LLM providers, SIEM, ITSM,
+# object storage, SaaS APIs of the connectors) for the pods that need them. model-inference and tika are not
+# labelled: a compromised model or parser has nowhere to send data.
+# ponytail: 0.0.0.0/0, narrow to the bank's data-service CIDRs per site in an overlay.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: egress-external}
+spec:
+  podSelector: {matchLabels: {aisec.bank/egress: external}}
+  policyTypes: [Egress]
+  egress:
+    - to: [{ipBlock: {cidr: 0.0.0.0/0}}]
+---
+# §5.2 "BUN --> OPA": OPA sidecars fetch the bundle over mTLS; the admin API behind the ingress; the MCP gateway's
+# own-token calls (tools/list, approvals); Prometheus.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: control-plane}
+spec:
+  podSelector: {matchLabels: {app: control-plane}}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from: [{podSelector: {matchLabels: {app: ai-gateway}}}, {podSelector: {matchLabels: {app: mcp-gateway}}}]
+      ports: [{port: 8443}]
+    - from:
+        - {namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: ingress-nginx}}}
+        - {namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: monitoring}}}
+        - {podSelector: {matchLabels: {app: mcp-gateway}}}
+      ports: [{port: 8080}]
+  egress:
+    - to: [{podSelector: {matchLabels: {app: tika}}}]  # PDF registration (ticket 37)
+      ports: [{port: 9998}]
+---
+# PEPs: callers anywhere in the bank (apps, agents); sidecar metrics for Prometheus. Out: bundle, scan, vault.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ai-gateway}
+spec:
+  podSelector: {matchLabels: {app: ai-gateway}}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - ports: [{port: 8080}]
+    - from: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: monitoring}}}]
+      ports: [{port: 8282}]
+  egress:
+    - to: [{podSelector: {matchLabels: {app: control-plane}}}, {podSelector: {matchLabels: {app: detection-svc}}}]
+      ports: [{port: 8443}]
+    - to: [{podSelector: {matchLabels: {app: token-vault}}}]
+      ports: [{port: 8080}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: mcp-gateway}
+spec:
+  podSelector: {matchLabels: {app: mcp-gateway}}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - ports: [{port: 8080}]
+    - from: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: monitoring}}}]
+      ports: [{port: 8282}]
+  egress:
+    - to: [{podSelector: {matchLabels: {app: control-plane}}}, {podSelector: {matchLabels: {app: detection-svc}}}]
+      ports: [{port: 8443}]
+    - to: [{podSelector: {matchLabels: {app: control-plane}}}]
+      ports: [{port: 8080}]
+---
+# §5.2 "PEP -->|scan| DS" and "DS --> MI": no other pod reaches the detectors (no oracle).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: detection-svc}
+spec:
+  podSelector: {matchLabels: {app: detection-svc}}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from: [{podSelector: {matchLabels: {app: ai-gateway}}}, {podSelector: {matchLabels: {app: mcp-gateway}}}]
+      ports: [{port: 8443}]
+  egress:
+    - to: [{podSelector: {matchLabels: {app: model-inference}}}]
+      ports: [{port: 8443}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: model-inference}
+spec:
+  podSelector: {matchLabels: {app: model-inference}}
+  policyTypes: [Ingress]
+  ingress:
+    - from: [{podSelector: {matchLabels: {app: detection-svc}}}]
+      ports: [{port: 8443}]
+---
+# §5.2 "GW --> TV".
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: token-vault}
+spec:
+  podSelector: {matchLabels: {app: token-vault}}
+  policyTypes: [Ingress]
+  ingress:
+    - from: [{podSelector: {matchLabels: {app: ai-gateway}}}]
+      ports: [{port: 8080}]
+---
+# Alertmanager webhook and metrics.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: siem-export}
+spec:
+  podSelector: {matchLabels: {app: siem-export}}
+  policyTypes: [Ingress]
+  ingress:
+    - from: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: monitoring}}}]
+      ports: [{port: 8080}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: event-ingest}
+spec:
+  podSelector: {matchLabels: {app: event-ingest}}
+  policyTypes: [Ingress]
+  ingress:
+    - from: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: monitoring}}}]
+      ports: [{port: 8080}]
+---
+# Bucket notifications arrive through the ingress; out to Tika.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: connector-worker}
+spec:
+  podSelector: {matchLabels: {app: connector-worker}}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - {namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: ingress-nginx}}}
+        - {namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: monitoring}}}
+      ports: [{port: 8080}]
+  egress:
+    - to: [{podSelector: {matchLabels: {app: tika}}}]
+      ports: [{port: 9998}]

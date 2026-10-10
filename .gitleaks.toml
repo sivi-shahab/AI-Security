@@ -1,0 +1,7 @@
+# gitleaks (CI scan stage): the default rules, plus one path exception.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Test-only SPIFFE PKI for model-inference mTLS tests (ticket 40); no deployment trusts this CA"
+paths = ['''^services/model-inference/testdata/pki/''']

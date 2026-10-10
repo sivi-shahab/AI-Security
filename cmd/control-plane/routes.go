@@ -24,24 +24,33 @@ import (
 // deps are the handlers and stores routes need. Nil stores are fine for the route matrix test: it never calls a
 // handler, only the router's authentication and authorization.
 type deps struct {
-	bundles, scim, metrics http.Handler
-	mcpGateway             http.Handler // MCP gateway: tools/list reports, approval requests and claims (own token)
-	incidents              *incident.Store
-	identity               *identity.Store
-	policies               *lifecycle.Store
-	simulator              *lifecycle.Simulator
-	apps                   *catalog.Store
-	feedKey                []byte
-	posture                posture.Sources
-	agents                 *agents.Store
-	data                   *pgxpool.Pool // data-at-rest findings (ticket 31)
-	remediations           *remediate.Store
-	compliance             *compliance.Store
-	complianceSources      compliance.Sources
-	register               compliance.RegisterSources
-	corpus                 *similarity.Store // registered confidential documents (ticket 37)
-	tuning                 *tuning.Store     // per-tenant detector tuning (ticket 38)
-	risk                   *riskcal.Store    // risk weight calibration (ticket 25)
+	scim, metrics     http.Handler
+	mcpGateway        http.Handler // MCP gateway: tools/list reports, approval requests and claims (own token)
+	incidents         *incident.Store
+	identity          *identity.Store
+	policies          *lifecycle.Store
+	simulator         *lifecycle.Simulator
+	apps              *catalog.Store
+	feedKey           []byte
+	posture           posture.Sources
+	agents            *agents.Store
+	data              *pgxpool.Pool // data-at-rest findings (ticket 31)
+	remediations      *remediate.Store
+	compliance        *compliance.Store
+	complianceSources compliance.Sources
+	register          compliance.RegisterSources
+	corpus            *similarity.Store // registered confidential documents (ticket 37)
+	tuning            *tuning.Store     // per-tenant detector tuning (ticket 38)
+	risk              *riskcal.Store    // risk weight calibration (ticket 25)
+}
+
+// workloadRoutes are for other workloads only, on the mTLS listener (ticket 40): the signed bundle (ticket 11) for
+// the OPA sidecars' identities in MTLS_ALLOW. Not on the admin API: the bundle's data (catalog, agent registry,
+// exceptions) is not for anyone on the network.
+func workloadRoutes(bundles http.Handler) *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.Handle("GET /bundles/aisec.tar.gz", bundles)
+	return mux
 }
 
 // routes is the complete admin API. Everything not listed as Public needs a permission (deny by default);
@@ -49,7 +58,6 @@ type deps struct {
 func routes(rt *authz.Router, d deps) {
 	// GET /healthz is added by server.Run.
 	rt.Public("GET /metrics", d.metrics)
-	rt.Public("GET /bundles/aisec.tar.gz", d.bundles) // sidecars; bundle is signed (ticket 11)
 	for _, m := range []string{"GET", "POST", "PUT", "PATCH", "DELETE"} {
 		rt.Public(m+" /scim/v2/", d.scim) // IdP provisioning client, own bearer token
 	}

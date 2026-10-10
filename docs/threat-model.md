@@ -48,7 +48,7 @@ Trust boundary:
 
 | | Ancaman | Rating | Kontrol |
 |---|---|---|---|
-| S | Pod lain di cluster memanggil `/scan/text` atau model-inference, lalu memakainya sebagai oracle untuk mengakali detektor | Medium | ❌ G1: endpoint internal tanpa authN, tanpa NetworkPolicy. |
+| S | Pod lain di cluster memanggil `/scan/text` atau model-inference, lalu memakainya sebagai oracle untuk mengakali detektor | Medium | ✅ G1 (tiket 40): `/scan/text` dan model hanya di port mTLS untuk identitas SPIFFE di `MTLS_ALLOW` (PEP → detection-svc, detection-svc → model-inference), NetworkPolicy default-deny (`deploy/base/networkpolicy.yaml`, diuji `deploy/netpol_test.go`). |
 | T | Model atau image detektor diganti | High | ✅ Image bertanda tangan, admission menolak yang tidak bertanda tangan (`deploy/cluster/require-signed-images.yaml`, tiket 05). Model tenant hanya lewat gate §9.4 dan four-eyes (tiket 38). |
 | T | Label poisoning: analis jahat/keliru melatih model untuk membuang temuan nyata | Medium | ✅ Holdout beku per kuartal, gate recall ≥ 0,98, rollout shadow → canary (tiket 38). |
 | I | Konten mentah tertinggal di log, temp file, atau response error | High | ✅ Field terlarang tidak boleh ada di log/trace (`internal/privacy/forbidden_fields.txt`, dipakai Go dan Python); snippet ter-redact ≤ 200 karakter (`detect.Snippet`); temp file TTL 1 jam. |
@@ -63,7 +63,7 @@ Trust boundary:
 | T | Policy jahat dipublikasikan oleh orang dalam | High | ✅ 4-eyes (author ≠ approver), simulasi diff, step-up untuk `policy.publish`, audit, rollback (tiket 12); alert `PolicyReleaseDiverged`. |
 | T | Exception dipakai sebagai backdoor permanen | Medium | ✅ Wajib kedaluwarsa (≤ 90 hari), notifikasi H-7, alert `PolicyExceptionsExpiring` (tiket 12). |
 | R | Siapa mengubah policy dan kapan | Medium | ✅ Audit log hash chain + WORM anchor (tiket 07); ekspor ke SIEM (tiket 19). |
-| I | Bundle berisi data katalog, registry agent, dan exception dapat diunduh siapa saja di jaringan (`GET /bundles/aisec.tar.gz` public) | Medium | ❌ G1: bundle hanya ditandatangani, tidak dibatasi pembacanya. |
+| I | Bundle berisi data katalog, registry agent, dan exception dapat diunduh siapa saja di jaringan (`GET /bundles/aisec.tar.gz` public) | Medium | ✅ G1 (tiket 40): `/bundles` hanya di port mTLS control-plane untuk identitas pod yang punya sidecar OPA; tidak ada di admin API. |
 | I | Decision log OPA memuat konten | High | ✅ `mask_decision` dengan daftar field terlarang yang sama (`policy/system/log/mask.rego`, ada test). |
 | D | Policy Service mati → bundle tidak diperbarui | Medium | ✅ OPA memakai cache terakhir. 🎫 fail-mode bila bundle kedaluwarsa > 24 jam (13, §13.3). |
 
@@ -129,7 +129,7 @@ Trust boundary:
 
 **Kontrol:** OPA memverifikasi signature setiap bundle, termasuk dari cache disk; bundle tanpa signature valid tidak dimuat dan memicu alert (11). Kunci privat hanya di-mount ke control-plane secara read-only; public key lewat ConfigMap. Publish butuh 4-eyes (12).
 
-**Sisa risiko:** kunci tanda tangan berupa file Secret Kubernetes, bukan HSM. Siapa pun yang bisa membaca Secret di namespace bisa menandatangani bundle. Mitigasi: RBAC namespace oleh tim platform. Pemindahan ke KMS/HSM dicatat sebagai bagian G1.
+**Sisa risiko:** (tiket 40) kunci privat ada di Vault transit dengan backing HSM, bukan file di pod. Yang ada di pod adalah token Vault berizin `sign` saja. Siapa pun yang bisa membaca token itu bisa menandatangani selama token berlaku. Mitigasi: TTL pendek dan diperbarui oleh Vault agent, audit device Vault, dan RBAC namespace. Rotasi tanpa downtime lewat dua slot kunci (`docs/runbooks/rotasi-kunci-bundle.md`).
 
 ### 4.3 Kebocoran lewat log/telemetry (High)
 **Skenario:** konten prompt masuk ke log aplikasi, decision log OPA, trace, pesan error, event Kafka, atau SIEM.

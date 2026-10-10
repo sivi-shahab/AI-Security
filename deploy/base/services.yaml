@@ -11,9 +11,10 @@ spec:
     matchLabels: {app: control-plane}
   template:
     metadata:
-      labels: {app: control-plane}
+      labels: {app: control-plane, aisec.bank/egress: external}
     spec:
       automountServiceAccountToken: false
+      serviceAccountName: control-plane
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532
@@ -23,24 +24,35 @@ spec:
         - name: control-plane
           image: registry.local/aisec/control-plane:dev
           imagePullPolicy: Always
-          ports: [{containerPort: 8080, name: http}]
+          # http: admin API (behind the ingress, OIDC) and probes; mtls: the signed bundle, for OPA sidecars only (ticket 40).
+          ports: [{containerPort: 8080, name: http}, {containerPort: 8443, name: mtls}]
           # Secret control-plane (out of band): DATABASE_URL, KAFKA_BROKERS (TLS listener), SCHEMA_REGISTRY_URL, TENANT_ID, TENANT_PEPPER (ticket 37), PUBLIC_URL,
           # OIDC_ISSUER, OIDC_AUDIENCE, OIDC_MFA_ACR, BREAK_GLASS_SUBS, SCIM_TOKEN_SHA256 (ADR-0002), MCP_GATEWAY_TOKEN_SHA256 (tickets 29-30), APPROVAL_TTL, APPROVAL_WEBHOOK_URL (ticket 30),
           # OPENSEARCH_URL (https), OPENSEARCH_USER, OPENSEARCH_PASSWORD (policy simulation reads stored events),
-          # CATALOG_FEED_URL + CATALOG_FEED_PUBKEY_FILE (signed AI app catalog feed, ticket 16; optional).
+          # CATALOG_FEED_URL + CATALOG_FEED_PUBKEY_FILE (signed AI app catalog feed, ticket 16; optional),
+          # BUNDLE_TRANSIT_URL (Vault transit sign endpoint of the HSM-backed bundle key, ticket 40).
           envFrom: [{secretRef: {name: control-plane}}]
           env:
-            - {name: BUNDLE_SIGNING_KEY_FILE, value: /keys/bundle.key}
             - {name: INCIDENT_KEK_FILE, value: /kek/incident.kek}
             # Event bus (ticket 41): TLS + SASL/SCRAM as control-plane; files from Secret control-plane-bus (out of band).
             - {name: KAFKA_SASL_USER, value: control-plane}
             - {name: KAFKA_SASL_PASSWORD_FILE, value: /bus/kafka-password}
             - {name: KAFKA_CA_FILE, value: /bus/kafka-ca.crt}
             - {name: OPENSEARCH_CA_FILE, value: /bus/opensearch-ca.crt}
+            # Bundle key (ticket 40): signs through Vault transit; the private key never enters the pod.
+            # Rotation: docs/runbooks/rotasi-kunci-bundle.md.
+            - {name: BUNDLE_SIGNING_KEY_ID, value: aisec-policy-a}
+            - {name: BUNDLE_SIGNING_PUBKEY_FILE, value: /keys/aisec-policy-a.pub}
+            - {name: BUNDLE_TRANSIT_TOKEN_FILE, value: /vault/secrets/bundle-signer-token}
+            - {name: MTLS_DIR, value: /spiffe}
+            - {name: MTLS_ALLOW, value: "spiffe://aisec.bank/ns/aisec/sa/ai-gateway,spiffe://aisec.bank/ns/aisec/sa/mcp-gateway"}
           volumeMounts:
-            - {name: bundle-signing, mountPath: /keys, readOnly: true}
+            - {name: bundle-pubkey, mountPath: /keys, readOnly: true}
+            # Vault token allowed only transit/sign on the bundle key (short TTL, renewed by the Vault agent).
+            - {name: bundle-signer-token, mountPath: /vault/secrets, readOnly: true}
             - {name: incident-kek, mountPath: /kek, readOnly: true}
             - {name: bus, mountPath: /bus, readOnly: true}
+            - {name: spiffe, mountPath: /spiffe, readOnly: true}
           readinessProbe: {httpGet: {path: /healthz, port: http}}
           livenessProbe: {httpGet: {path: /healthz, port: http}}
           resources:
@@ -52,10 +64,13 @@ spec:
             capabilities: {drop: [ALL]}
       volumes:
         - {name: bus, secret: {secretName: control-plane-bus}}
-        # PEM EC P-256 private key, provisioned out of band (Vault/HSM-backed in production). Never in git.
-        - {name: bundle-signing, secret: {secretName: policy-bundle-signing}}
+        # aisec-policy-a.pub, aisec-policy-b.pub: public halves of the two bundle key slots.
+        - {name: bundle-pubkey, configMap: {name: policy-bundle-pubkey}}
+        - {name: bundle-signer-token, secret: {secretName: bundle-signer-token}}
         # 32 random bytes wrapping per-incident evidence keys (KMS/HSM in production).
         - {name: incident-kek, secret: {secretName: incident-kek}}
+        # The pod's SPIFFE SVID (cert-manager csi-driver-spiffe, deploy/cluster/workload-identity.md).
+        - {name: spiffe, csi: {driver: spiffe.csi.cert-manager.io, readOnly: true}}
 ---
 apiVersion: v1
 kind: Service
@@ -63,7 +78,7 @@ metadata:
   name: control-plane
 spec:
   selector: {app: control-plane}
-  ports: [{port: 80, targetPort: http, name: http}]
+  ports: [{port: 80, targetPort: http, name: http}, {port: 8443, targetPort: mtls, name: mtls}]
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -76,9 +91,10 @@ spec:
     matchLabels: {app: ai-gateway}
   template:
     metadata:
-      labels: {app: ai-gateway}
+      labels: {app: ai-gateway, aisec.bank/egress: external}
     spec:
       automountServiceAccountToken: false
+      serviceAccountName: ai-gateway
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532
@@ -123,7 +139,9 @@ spec:
             - --addr=127.0.0.1:8181  # only the PEP in this pod may ask for decisions
             - --diagnostic-addr=:8282
             - --config-file=/config/opa.yaml
-            - --set-file=keys.aisec-policy.key=/keys/bundle.pub
+            # Both key slots (policysvc.KeyIDs): the bundle's kid picks one, so the key rotates without a restart here.
+            - --set-file=keys.aisec-policy-a.key=/keys/aisec-policy-a.pub
+            - --set-file=keys.aisec-policy-b.key=/keys/aisec-policy-b.pub
             - --optimize-store-for-read-speed
           ports: [{containerPort: 8282, name: opa-diag}]
           # Not ready until a verified bundle is active: no PEP traffic on an empty policy.
@@ -133,6 +151,7 @@ spec:
             - {name: opa-config, mountPath: /config, readOnly: true}
             - {name: bundle-pubkey, mountPath: /keys, readOnly: true}
             - {name: opa-cache, mountPath: /var/opa}
+            - {name: spiffe, mountPath: /spiffe, readOnly: true}  # client certificate for /bundles (ticket 40)
           resources:
             requests: {cpu: 100m, memory: 64Mi}
             limits: {cpu: "1", memory: 256Mi}
@@ -145,9 +164,10 @@ spec:
         - {name: provider-keys, secret: {secretName: ai-gateway-provider-keys}}
         - {name: bus, secret: {secretName: ai-gateway-bus}}
         - {name: opa-config, configMap: {name: opa-config}}
-        # bundle.pub: public half of policy-bundle-signing, provisioned with it.
+        # aisec-policy-a.pub, aisec-policy-b.pub: the bundle key slots (docs/runbooks/rotasi-kunci-bundle.md).
         - {name: bundle-pubkey, configMap: {name: policy-bundle-pubkey}}
         - {name: opa-cache, emptyDir: {}}
+        - {name: spiffe, csi: {driver: spiffe.csi.cert-manager.io, readOnly: true}}
 ---
 apiVersion: v1
 kind: Service
@@ -168,9 +188,10 @@ spec:
     matchLabels: {app: detection-svc}
   template:
     metadata:
-      labels: {app: detection-svc}
+      labels: {app: detection-svc, aisec.bank/egress: external}
     spec:
       automountServiceAccountToken: false
+      serviceAccountName: detection-svc
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532
@@ -180,10 +201,15 @@ spec:
         - name: detection-svc
           image: registry.local/aisec/detection-svc:dev
           imagePullPolicy: Always
-          ports: [{containerPort: 8080, name: http}]
+          # http: probes only; mtls: POST /scan/text for the PEP workloads in MTLS_ALLOW (ticket 40, threat model G1).
+          ports: [{containerPort: 8080, name: http}, {containerPort: 8443, name: mtls}]
           # Secret detection-svc (out of band, optional): DATABASE_URL (read-only role on similarity.docs, tuning.models), TENANT_ID,
           # TENANT_PEPPER (same as control-plane) for registered confidential documents (37) and tenant tuning models (38).
           envFrom: [{secretRef: {name: detection-svc, optional: true}}]
+          env:
+            - {name: MTLS_DIR, value: /spiffe}
+            - {name: MTLS_ALLOW, value: "spiffe://aisec.bank/ns/aisec/sa/ai-gateway,spiffe://aisec.bank/ns/aisec/sa/mcp-gateway"}
+          volumeMounts: [{name: spiffe, mountPath: /spiffe, readOnly: true}]
           readinessProbe: {httpGet: {path: /healthz, port: http}}
           livenessProbe: {httpGet: {path: /healthz, port: http}}
           resources:
@@ -193,6 +219,8 @@ spec:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities: {drop: [ALL]}
+      volumes:
+        - {name: spiffe, csi: {driver: spiffe.csi.cert-manager.io, readOnly: true}}
 ---
 apiVersion: v1
 kind: Service
@@ -200,7 +228,7 @@ metadata:
   name: detection-svc
 spec:
   selector: {app: detection-svc}
-  ports: [{port: 80, targetPort: http, name: http}]
+  ports: [{port: 8443, targetPort: mtls, name: mtls}]
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -216,6 +244,7 @@ spec:
       labels: {app: model-inference}
     spec:
       automountServiceAccountToken: false
+      serviceAccountName: model-inference
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532
@@ -225,7 +254,12 @@ spec:
         - name: model-inference
           image: registry.local/aisec/model-inference:dev
           imagePullPolicy: Always
-          ports: [{containerPort: 8080, name: http}]
+          # http: probes only; mtls: the models, for detection-svc only (ticket 40, services/model-inference/mtls.py).
+          ports: [{containerPort: 8080, name: http}, {containerPort: 8443, name: mtls}]
+          env:
+            - {name: MTLS_DIR, value: /spiffe}
+            - {name: MTLS_ALLOW, value: "spiffe://aisec.bank/ns/aisec/sa/detection-svc"}
+          volumeMounts: [{name: spiffe, mountPath: /spiffe, readOnly: true}]
           readinessProbe: {httpGet: {path: /healthz, port: http}}
           livenessProbe: {httpGet: {path: /healthz, port: http}}
           resources:
@@ -235,6 +269,8 @@ spec:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities: {drop: [ALL]}
+      volumes:
+        - {name: spiffe, csi: {driver: spiffe.csi.cert-manager.io, readOnly: true}}
 ---
 apiVersion: v1
 kind: Service
@@ -242,7 +278,7 @@ metadata:
   name: model-inference
 spec:
   selector: {app: model-inference}
-  ports: [{port: 80, targetPort: http, name: http}]
+  ports: [{port: 8443, targetPort: mtls, name: mtls}]
 ---
 # Tokenization vault (ticket 24): two replicas, active-passive. Only the replica holding the Postgres advisory lock is
 # ready, so the Service routes to it; the other takes over when it dies.
@@ -257,9 +293,10 @@ spec:
     matchLabels: {app: token-vault}
   template:
     metadata:
-      labels: {app: token-vault}
+      labels: {app: token-vault, aisec.bank/egress: external}
     spec:
       automountServiceAccountToken: false
+      serviceAccountName: token-vault
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532

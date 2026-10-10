@@ -3,6 +3,8 @@ kind: Kustomization
 namespace: aisec
 resources:
   - namespace.yaml
+  - serviceaccounts.yaml
+  - networkpolicy.yaml
   - services.yaml
   - audit-anchor.yaml
   - event-ingest.yaml

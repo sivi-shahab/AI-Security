@@ -37,7 +37,7 @@ import (
 	"aisec/policy"
 )
 
-// Env: BUNDLE_SIGNING_KEY_FILE, DATABASE_URL, INCIDENT_KEK_FILE (32 raw bytes), KAFKA_* (events.KafkaOpts), SCHEMA_REGISTRY_URL,
+// Env: bundle signing (see bundleSigner), DATABASE_URL, INCIDENT_KEK_FILE (32 raw bytes), KAFKA_* (events.KafkaOpts), SCHEMA_REGISTRY_URL,
 // TENANT_ID, TENANT_PEPPER (similarity fingerprints, ticket 37), TIKA_URL (optional: PDF registration), PUBLIC_URL, CATALOG_FEED_URL + CATALOG_FEED_PUBKEY_FILE (signed app catalog feed), OPENSEARCH_* (ingest.OpenSearchFromEnv; policy simulation reads stored events), and identity (ADR-0002): OIDC_ISSUER, OIDC_AUDIENCE, OIDC_MFA_ACR (comma-separated acr
 // values that mean MFA), BREAK_GLASS_SUBS (comma-separated token subs), SCIM_TOKEN_SHA256 (hex),
 // MCP_GATEWAY_TOKEN_SHA256 (hex; the MCP gateway reporting tools/list and asking for approvals, tickets 29-30),
@@ -56,9 +56,9 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// No key, no bundle: sidecars must never be offered an unsigned policy.
-	key, err := os.ReadFile(os.Getenv("BUNDLE_SIGNING_KEY_FILE"))
+	signer, err := bundleSigner()
 	if err != nil {
-		fail("read bundle signing key", err)
+		fail("bundle signer", err)
 	}
 
 	// Incidents: Postgres (with the audit log), Kafka for decision events.
@@ -133,7 +133,7 @@ func main() {
 		registry.Notify = agents.WebhookNotifier(url, os.Getenv("PUBLIC_URL"), &http.Client{Timeout: 10 * time.Second}, log)
 	}
 	bundles := &policysvc.Server{}
-	releaser := &lifecycle.Releaser{Store: policies, Server: bundles, FS: policy.Files, SigningKey: string(key), Log: log, Poll: 15 * time.Second}
+	releaser := &lifecycle.Releaser{Store: policies, Server: bundles, FS: policy.Files, Signer: signer, Log: log, Poll: 15 * time.Second}
 	if err := releaser.Sync(ctx); err != nil {
 		fail("build policy bundle", err)
 	}
@@ -314,11 +314,11 @@ func main() {
 	if err := wireIncidents(ctx, incidents, registry, remediations, log); err != nil {
 		fail("incident integrations", err)
 	}
-	routes(rt, deps{bundles: bundles, scim: ids.SCIMHandler(scimHash, os.Getenv("PUBLIC_URL")), metrics: metrics, mcpGateway: registry.GatewayHandler(mcpHash, time.Now), incidents: incidents, identity: ids,
+	routes(rt, deps{scim: ids.SCIMHandler(scimHash, os.Getenv("PUBLIC_URL")), metrics: metrics, mcpGateway: registry.GatewayHandler(mcpHash, time.Now), incidents: incidents, identity: ids,
 		policies: policies, simulator: simulator, apps: apps, feedKey: feedKey,
 		posture: postureSrc, compliance: complianceStore, complianceSources: complianceSrc, register: register,
 		agents: registry, data: db, remediations: remediations, corpus: confidential, tuning: tuner, risk: riskWeights})
-	server.Run("control-plane", rt.Mux)
+	server.RunMTLS("control-plane", rt.Mux, workloadRoutes(bundles))
 	cancel()
 	kc.Close()
 }

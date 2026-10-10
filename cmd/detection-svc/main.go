@@ -59,7 +59,7 @@ func scanText(tuned *tuning.Live, similar *similarity.Live) http.HandlerFunc {
 	}
 }
 
-// Env (optional; without it only L1 runs): DATABASE_URL (read access to similarity.docs and tuning.models), TENANT_ID,
+// Env: MTLS_DIR, MTLS_ALLOW (internal/server, ticket 40). Optional (without it only L1 runs): DATABASE_URL (read access to similarity.docs and tuning.models), TENANT_ID,
 // TENANT_PEPPER.
 func main() {
 	var similar *similarity.Live
@@ -79,7 +79,12 @@ func main() {
 			os.Exit(1)
 		}
 	}
+	// Scanning is for PEP workloads only (ticket 40): on the mTLS listener, never on the probe port.
+	server.RunMTLS("detection-svc", http.NewServeMux(), workloadRoutes(tuned, similar))
+}
+
+func workloadRoutes(tuned *tuning.Live, similar *similarity.Live) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /scan/text", scanText(tuned, similar))
-	server.Run("detection-svc", mux)
+	return mux
 }

@@ -1,20 +1,33 @@
-# OPA sidecar (PDP) config, spec FR-POL-1/9. The public key is not here: the container passes
-# --set-file keys.aisec-policy.key=/keys/bundle.pub from the policy-bundle-pubkey ConfigMap.
+# OPA sidecar (PDP) config, spec FR-POL-1/9. Public keys are not here: the container passes --set-file
+# keys.<slot>.key=/keys/<slot>.pub for both slots of the policy-bundle-pubkey ConfigMap (policysvc.KeyIDs).
 services:
   policy:
-    url: http://control-plane/bundles
+    # Ticket 40: the bundle is served only on the control-plane's mTLS port, to the OPA sidecars' workload
+    # identities (MTLS_ALLOW). The pod's SPIFFE SVID comes from csi-driver-spiffe and rotates in place.
+    url: https://control-plane:8443/bundles
+    tls:
+      ca_cert: /spiffe/ca.crt
+    credentials:
+      client_tls:
+        cert: /spiffe/tls.crt
+        private_key: /spiffe/tls.key
+        cert_reread_interval_seconds: 300
 bundles:
   aisec:
     service: policy
     resource: aisec.tar.gz
     # Last verified bundle survives an OPA restart while the Policy Service is down (spec §13.1).
     persist: true
+    # No keyid here: the bundle's kid picks the slot, so a key rotation needs no config change
+    # (docs/runbooks/rotasi-kunci-bundle.md). An unsigned or wrongly signed bundle is never activated.
     signing:
-      keyid: aisec-policy  # policysvc.KeyID; an unsigned or wrongly signed bundle is never activated
+      exclude_files: []
     polling:
       long_polling_timeout_seconds: 60
 keys:
-  aisec-policy:
+  aisec-policy-a:
+    algorithm: ES256
+  aisec-policy-b:
     algorithm: ES256
 persistence_directory: /var/opa
 decision_logs:

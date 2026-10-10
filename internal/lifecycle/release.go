@@ -14,12 +14,12 @@ import (
 // replica reaches all of them through Postgres NOTIFY within moments, with a poll as the fallback, so whichever
 // replica a sidecar long-polls has it (spec §13: publish/rollback to every PEP ≤ 60 s p99).
 type Releaser struct {
-	Store      *Store
-	Server     *policysvc.Server
-	FS         fs.FS
-	SigningKey string
-	Log        *slog.Logger
-	Poll       time.Duration // fallback when a notification is missed
+	Store  *Store
+	Server *policysvc.Server
+	FS     fs.FS
+	Signer policysvc.Signer
+	Log    *slog.Logger
+	Poll   time.Duration // fallback when a notification is missed
 
 	current atomic.Int64
 }
@@ -36,7 +36,7 @@ func (r *Releaser) Sync(ctx context.Context) error {
 	if rel.Number <= r.current.Load() {
 		return nil
 	}
-	tarball, rev, err := policysvc.Build(ctx, r.FS, r.SigningKey, rel.Overrides())
+	tarball, rev, err := policysvc.Build(ctx, r.FS, r.Signer, rel.Overrides())
 	if err != nil {
 		return err
 	}

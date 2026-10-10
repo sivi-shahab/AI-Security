@@ -55,16 +55,14 @@ func TestRegoPolicies(t *testing.T) {
 	}
 }
 
-func keyPair(t *testing.T) (priv, pub string) {
+func keyPair(t *testing.T) (priv Signer, pub string) {
 	t.Helper()
 	k, err := ecdsa.GenerateKey(elliptic.P256(), crand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
-	der, _ := x509.MarshalECPrivateKey(k)
 	pubDer, _ := x509.MarshalPKIXPublicKey(&k.PublicKey)
-	return string(pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: der})),
-		string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDer}))
+	return Signer{KeyID: KeyID, Key: k}, string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDer}))
 }
 
 func read(tarball []byte, pub string) (bundle.Bundle, error) {

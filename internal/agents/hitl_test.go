@@ -220,10 +220,9 @@ func TestKillSwitchPropagation(t *testing.T) {
 		t.Fatal(err)
 	}
 	k, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	der, _ := x509.MarshalECPrivateKey(k)
 	pubDer, _ := x509.MarshalPKIXPublicKey(&k.PublicKey)
 	srv := &policysvc.Server{}
-	r := &lifecycle.Releaser{Store: ls, Server: srv, FS: policy.Files, SigningKey: string(pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: der})),
+	r := &lifecycle.Releaser{Store: ls, Server: srv, FS: policy.Files, Signer: policysvc.Signer{KeyID: policysvc.KeyID, Key: k},
 		Log: slog.New(slog.DiscardHandler), Poll: 15 * time.Second}
 	if err := r.Sync(ctx); err != nil {
 		t.Fatal(err)

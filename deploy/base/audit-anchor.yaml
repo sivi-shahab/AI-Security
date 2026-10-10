@@ -13,9 +13,12 @@ spec:
     spec:
       backoffLimit: 6
       template:
+        metadata:
+          labels: {app: audit-anchor, aisec.bank/egress: external}
         spec:
           restartPolicy: OnFailure
           automountServiceAccountToken: false
+          serviceAccountName: audit-anchor
           securityContext:
             runAsNonRoot: true
             runAsUser: 65532

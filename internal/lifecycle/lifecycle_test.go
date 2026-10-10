@@ -328,15 +328,13 @@ func TestPropagation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	k, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	der, _ := x509.MarshalECPrivateKey(k)
 	pubDer, _ := x509.MarshalPKIXPublicKey(&k.PublicKey)
-	priv := string(pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: der}))
 	pub := string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDer}))
 
 	var servers []*httptest.Server
 	for range 2 {
 		srv := &policysvc.Server{}
-		r := &Releaser{Store: s, Server: srv, FS: policy.Files, SigningKey: priv, Log: slog.New(slog.DiscardHandler), Poll: 15 * time.Second}
+		r := &Releaser{Store: s, Server: srv, FS: policy.Files, Signer: policysvc.Signer{KeyID: policysvc.KeyID, Key: k}, Log: slog.New(slog.DiscardHandler), Poll: 15 * time.Second}
 		if err := r.Sync(ctx); err != nil {
 			t.Fatal(err)
 		}

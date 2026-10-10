@@ -5,8 +5,10 @@ import logging
 import os
 import signal
 import threading
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
+
+import mtls
 
 SERVICE = "model-inference"
 FORBIDDEN_FILE = os.environ.get("FORBIDDEN_FIELDS_FILE") or (
@@ -56,13 +58,18 @@ def main():
     h = logging.StreamHandler()
     h.setFormatter(JSONFormatter())
     logging.basicConfig(level=logging.INFO, handlers=[h])
-    srv = ThreadingHTTPServer(("", int(os.environ.get("PORT", "8080"))), Handler)
+    # Probe port + mTLS model port (ticket 40, mtls.py).
+    srvs = mtls.servers(Handler)
     # shutdown() blocks until serve_forever() returns, so it must not run on the serving thread.
     signal.signal(
-        signal.SIGTERM, lambda *_: threading.Thread(target=srv.shutdown).start()
+        signal.SIGTERM,
+        lambda *_: [threading.Thread(target=s.shutdown).start() for s in srvs],
     )
-    log.info("listening", extra={"addr": srv.server_address})
-    srv.serve_forever()
+    for s in srvs[1:]:
+        threading.Thread(target=s.serve_forever, daemon=True).start()
+    for s in srvs:
+        log.info("listening", extra={"addr": s.server_address})
+    srvs[0].serve_forever()
 
 
 if __name__ == "__main__":

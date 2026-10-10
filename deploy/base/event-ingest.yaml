@@ -13,9 +13,10 @@ spec:
     matchLabels: {app: event-ingest}
   template:
     metadata:
-      labels: {app: event-ingest}
+      labels: {app: event-ingest, aisec.bank/egress: external}
     spec:
       automountServiceAccountToken: false
+      serviceAccountName: event-ingest
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532

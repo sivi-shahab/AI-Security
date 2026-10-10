@@ -16,9 +16,10 @@ spec:
     matchLabels: {app: mcp-gateway}
   template:
     metadata:
-      labels: {app: mcp-gateway}
+      labels: {app: mcp-gateway, aisec.bank/egress: external}
     spec:
       automountServiceAccountToken: false
+      serviceAccountName: mcp-gateway
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532
@@ -58,7 +59,9 @@ spec:
             - --addr=127.0.0.1:8181  # only the PEP in this pod may ask for decisions
             - --diagnostic-addr=:8282
             - --config-file=/config/opa.yaml
-            - --set-file=keys.aisec-policy.key=/keys/bundle.pub
+            # Both key slots (policysvc.KeyIDs): the bundle's kid picks one, so the key rotates without a restart here.
+            - --set-file=keys.aisec-policy-a.key=/keys/aisec-policy-a.pub
+            - --set-file=keys.aisec-policy-b.key=/keys/aisec-policy-b.pub
             - --optimize-store-for-read-speed
           ports: [{containerPort: 8282, name: opa-diag}]
           # Not ready until a verified bundle is active: no PEP traffic on an empty policy.
@@ -68,6 +71,7 @@ spec:
             - {name: opa-config, mountPath: /config, readOnly: true}
             - {name: bundle-pubkey, mountPath: /keys, readOnly: true}
             - {name: opa-cache, mountPath: /var/opa}
+            - {name: spiffe, mountPath: /spiffe, readOnly: true}  # client certificate for /bundles (ticket 40)
           resources:
             requests: {cpu: 100m, memory: 64Mi}
             limits: {cpu: "1", memory: 256Mi}
@@ -81,6 +85,7 @@ spec:
         - {name: opa-config, configMap: {name: opa-config}}
         - {name: bundle-pubkey, configMap: {name: policy-bundle-pubkey}}
         - {name: opa-cache, emptyDir: {}}
+        - {name: spiffe, csi: {driver: spiffe.csi.cert-manager.io, readOnly: true}}
 ---
 apiVersion: v1
 kind: Service

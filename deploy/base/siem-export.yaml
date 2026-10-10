@@ -15,9 +15,10 @@ spec:
     matchLabels: {app: siem-export}
   template:
     metadata:
-      labels: {app: siem-export}
+      labels: {app: siem-export, aisec.bank/egress: external}
     spec:
       automountServiceAccountToken: false
+      serviceAccountName: siem-export
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532

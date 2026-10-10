@@ -26,8 +26,9 @@ import (
 )
 
 const (
-	// KeyID and Alg must match the sidecar's `keys` entry (deploy/base/opa-config.yaml).
-	KeyID = "aisec-policy"
+	// KeyID is the default key slot (KeyIDs, signer.go); Alg must match the sidecar's `keys` entries
+	// (deploy/base/opa/opa.yaml).
+	KeyID = "aisec-policy-a"
 	Alg   = "ES256"
 	// ContentType tells OPA the server supports long-polling.
 	ContentType = "application/vnd.openpolicyagent.bundles"
@@ -97,9 +98,9 @@ func (src source) regoOpts(query string) []func(*rego.Rego) {
 }
 
 // Build bundles every non-test module and data.json in fsys (with overrides), injects the forbidden log fields
-// for decision-log masking (data.system.log.forbidden), refuses rule sets with errors, and signs with a PEM EC
-// P-256 key. The revision is a content hash: replicas building the same release serve the same ETag.
-func Build(ctx context.Context, fsys fs.FS, signingKeyPEM string, overrides Overrides) (tarball []byte, revision string, err error) {
+// for decision-log masking (data.system.log.forbidden), refuses rule sets with errors, and signs with signer. The
+// revision is a content hash: replicas building the same release serve the same ETag.
+func Build(ctx context.Context, fsys fs.FS, signer Signer, overrides Overrides) (tarball []byte, revision string, err error) {
 	src, err := load(fsys, overrides)
 	if err != nil {
 		return nil, "", err
@@ -109,7 +110,7 @@ func Build(ctx context.Context, fsys fs.FS, signingKeyPEM string, overrides Over
 	}
 	b := bundle.Bundle{Data: src.data, Modules: src.modules}
 	b.Manifest = bundle.Manifest{Revision: src.revision, Roots: &[]string{"aisec", "system"}}
-	if err := b.GenerateSignature(bundle.NewSigningConfig(signingKeyPEM, Alg, ""), KeyID, false); err != nil {
+	if err := signer.sign(&b); err != nil {
 		return nil, "", fmt.Errorf("sign bundle: %w", err)
 	}
 	var buf bytes.Buffer
