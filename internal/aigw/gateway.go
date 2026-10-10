@@ -50,6 +50,7 @@ type Gateway struct {
 	TenantID  string
 	Now       func() time.Time
 	Log       *slog.Logger
+	Metrics   func(io.Writer) // more counters for /metrics (the event producer's)
 
 	mu      sync.Mutex
 	metrics map[[2]string]int64 // {name, app} → count
@@ -557,5 +558,8 @@ func (g *Gateway) serveMetrics(w http.ResponseWriter, _ *http.Request) {
 	slices.SortFunc(keys, func(a, b [2]string) int { return strings.Compare(a[0]+a[1], b[0]+b[1]) })
 	for _, k := range keys {
 		_, _ = fmt.Fprintf(w, "aigw_%s{app=%q} %d\n", k[0], k[1], g.metrics[k])
+	}
+	if g.Metrics != nil {
+		g.Metrics(w)
 	}
 }

@@ -13,9 +13,14 @@ up)
   for s in ai-gateway detection-svc event-ingest; do
     docker build -q -t "t21-$s" --build-arg SERVICE="$s" -f "$root/build/go.Dockerfile" "$root" >/dev/null
   done
-  docker compose up -d
+  # The gateway exits until karapace has elected a primary (healthy comes first); opa shares the gateway's network
+  # namespace, so it is (re)created only once the gateway serves.
+  docker compose up -d --no-deps $(docker compose config --services | grep -vx opa) || true
+  until curl -fsS localhost:18080/healthz >/dev/null 2>&1; do sleep 2; done
+  sleep 5; curl -fsS localhost:18080/healthz >/dev/null
+  docker compose up -d --force-recreate --no-deps opa
   # The decision topic is created by the platform team in production (3 partitions, as internal/ingest's test);
-  # without it every Emit waits its 2 s timeout in the request path.
+  # without it every decision event is dropped (decision_events_dropped_total).
   until docker exec t21-kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --if-not-exists \
     --topic aisec.decision_event.v1 --partitions 3 --replication-factor 1 >/dev/null 2>&1; do sleep 2; done
   until curl -fsS localhost:18080/healthz >/dev/null 2>&1; do sleep 2; done

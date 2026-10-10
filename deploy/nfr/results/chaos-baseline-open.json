@@ -1,1 +1,1 @@
-{"label":"baseline-open","requests":599,"codes":{"200":599},"achieved_rps":29.95,"P50":17.911,"P95":25.503,"P99":33.585,"Max":37.85}
+{"label":"baseline-open","requests":599,"codes":{"200":599},"achieved_rps":29.95,"P50":18.171,"P95":41.829,"P99":86.543,"Max":146.134}

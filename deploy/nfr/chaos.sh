@@ -48,15 +48,15 @@ note "opa cached closed: $(codes opa-cached-closed)"
 docker start t21-bundles >/dev/null
 
 # --- Kafka down -----------------------------------------------------------------------------------------------
-since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+dr0=$(metric decision_events_dropped_total)
 docker stop t21-kafka >/dev/null
 both kafka-down 30s
-note "kafka down closed: $(codes kafka-down-closed)  event errors logged: $(errs "$since" 'decision event')"
+note "kafka down closed: $(codes kafka-down-closed)"
 note "kafka down open:   $(codes kafka-down-open)"
 docker start t21-kafka >/dev/null
 sleep 20
 both kafka-back 15s
-note "kafka back closed: $(codes kafka-back-closed)"
+note "kafka back closed: $(codes kafka-back-closed)  decision_events_dropped_total +$(( $(metric decision_events_dropped_total) - dr0 ))"
 
 # --- Redis down -----------------------------------------------------------------------------------------------
 since=$(date -u +%Y-%m-%dT%H:%M:%SZ)

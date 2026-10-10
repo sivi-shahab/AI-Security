@@ -1,1 +1,1 @@
-{"label":"detection-down-closed","requests":899,"codes":{"200":899},"achieved_rps":29.966666666666665,"P50":17.793,"P95":24.389,"P99":29.935,"Max":45.067}
+{"label":"detection-down-closed","requests":899,"codes":{"200":899},"achieved_rps":29.966666666666665,"P50":15.473,"P95":21.763,"P99":37.083,"Max":154.12}

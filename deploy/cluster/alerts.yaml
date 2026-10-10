@@ -60,6 +60,12 @@ spec:
           labels: {severity: warning}
           annotations:
             summary: "decision events rejected ({{ $labels.reason }}): PEP and schema out of step?"
+        # Ticket 46: gateways keep serving through a Kafka outage, but these decisions are missing from the record.
+        - alert: DecisionEventsDropped
+          expr: sum by (namespace, pod) (increase(decision_events_dropped_total[5m])) > 0
+          labels: {severity: critical, category: security}
+          annotations:
+            summary: "{{ $labels.pod }} could not deliver decision events to Kafka; the audit trail has a gap"
         - alert: EventIngestLagging
           expr: sum(kafka_consumer_lag{group="event-ingest"}) > 10000
           for: 10m

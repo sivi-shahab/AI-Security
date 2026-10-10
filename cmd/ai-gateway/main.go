@@ -74,11 +74,7 @@ func main() {
 	opa := &mcpgw.OPA{URL: opaURL, HTTP: &http.Client{Timeout: 2 * time.Second}}
 	gw := &aigw.Gateway{
 		Apps: cfg.Apps, Providers: providers, Decide: opa.Decide, Key: (&aigw.KeyFiles{}).Key, Count: count, Vault: vault,
-		Emit: func(ctx context.Context, e events.Event) error {
-			ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-			defer cancel()
-			return producer.Publish(ctx, e)
-		},
+		Emit:     func(_ context.Context, e events.Event) error { return producer.Publish(e) }, Metrics: producer.WriteMetrics,
 		// Models take their time: bound the wait for response headers, generously.
 		Upstream: &http.Client{Transport: &http.Transport{Proxy: http.ProxyFromEnvironment, ResponseHeaderTimeout: 120 * time.Second}},
 		Pepper:   []byte(os.Getenv("TENANT_PEPPER")), TenantID: os.Getenv("TENANT_ID"), Now: time.Now, Log: log,

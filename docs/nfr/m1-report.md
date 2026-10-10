@@ -32,7 +32,7 @@ Mentah: `results/{direct,gateway}-*-20rps.json`, `ramp-*.json`, `split-opa3-gw1-
 
 ## 3. Chaos dan fail mode (§13.3)
 
-Dua app, masing-masing 30 RPS: `nfr-closed` (`fail_closed`) dan `nfr-open` (`fail_open`). Setiap dependensi dimatikan 30 detik lalu dinyalakan lagi (`chaos.sh`, `results/chaos-summary.txt`).
+Dua app, masing-masing 30 RPS: `nfr-closed` (`fail_closed`) dan `nfr-open` (`fail_open`). Setiap dependensi dimatikan 30 detik lalu dinyalakan lagi (`chaos.sh`, `results/chaos-summary.txt`). `results/chaos-*` adalah run ulang setelah tiket 46 (2026-10-10). Baris lain di tabel ini mengutip run awal, yang ada di riwayat git.
 
 | Skenario | Diharapkan | Teramati | Status |
 |---|---|---|---|
@@ -41,8 +41,8 @@ Dua app, masing-masing 30 RPS: `nfr-closed` (`fail_closed`) dan `nfr-open` (`fai
 | OPA di-restart saat Policy Service mati | pakai bundle cache terakhir | melayani lagi dalam **1 s** dari bundle tersimpan; app `fail_closed` 100% 200 (butuh keputusan PDP) | ✅ |
 | Bundle kedaluwarsa > 24 jam | masuk fail-mode policy | **tidak diimplementasikan** di PEP | ❌ → tiket 51 |
 | Detection timeout (150 ms) → L1 saja | | tidak bisa diuji: tidak ada PEP yang memanggil detection-svc. Mematikannya tidak berdampak apa pun (p95 24 ms, 100% 200) | ❌ → tiket 49 |
-| Kafka mati | (tidak disebut eksplisit; data plane harus tetap jalan untuk 99,95%) | **semua** request kedua app tidak selesai dalam 30 s sampai Kafka hidup lagi: `ProduceSync` sinkron di jalur request tidak berhenti di context 2 s | ❌ **P0** → tiket 46 |
-| Redis mati | limit tidak ditegakkan, trafik jalan | 100% 200, tetapi p95 **416 ms**, p99 440 ms, 7.192 baris error log dalam 30 s | ❌ → tiket 48 |
+| Kafka mati | (tidak disebut eksplisit; data plane harus tetap jalan untuk 99,95%) | Awalnya **semua** request kedua app tidak selesai dalam 30 s sampai Kafka hidup lagi: `ProduceSync` sinkron di jalur request tidak berhenti di context 2 s. Setelah tiket 46 (produce async): 899/899 200 per app, p95 20 ms, p99 25 ms; 3.592 event hilang terhitung di `decision_events_dropped_total` | ✅ setelah tiket 46 |
+| Redis mati | limit tidak ditegakkan, trafik jalan | 100% 200, tetapi p95 **416 ms**, p99 440 ms, 7.192 baris error log dalam 30 s. Run ulang tiket 46: sangat bervariasi, kadang p95 3,3 s dan 163 jawaban 503 untuk app `fail_closed` (detail di tiket 48) | ❌ → tiket 48 |
 | Pemulihan setelah tiap skenario | kembali normal | p95 20–28 ms, 100% 200 | ✅ |
 
 ## 4. Soak
@@ -75,7 +75,7 @@ Catatan:
 |---|---|---|
 | T1 | OPA eval p99 9,0 ms > 5 ms | tiket **47** |
 | T2 | Throughput per pod 60–100 RPS < 300 RPS | tiket **47** |
-| T3 | Kafka mati → gateway berhenti melayani | tiket **46** (P0, M1) |
+| T3 | Kafka mati → gateway berhenti melayani | tiket **46** (P0, M1), selesai |
 | T4 | Redis mati → p95 416 ms | tiket **48** |
 | T5 | L2/detection-svc tidak di jalur PEP; timeout 150 ms §13.3 tidak ada | tiket **49** |
 | T6 | Scan file hanya 2 MiB teks pertama (angka latensi file "lulus" karena ini) | tiket **50** |

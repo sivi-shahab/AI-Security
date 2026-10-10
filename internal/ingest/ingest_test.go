@@ -223,7 +223,7 @@ func TestPipelineIntegration(t *testing.T) {
 		mu.Lock()
 		published[e.EventID] = time.Now()
 		mu.Unlock()
-		if err := prod.Publish(ctx, e); err != nil {
+		if err := prod.Publish(e); err != nil {
 			t.Fatal(err)
 		}
 		index = IndexFor(time.Now())
