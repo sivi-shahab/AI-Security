@@ -69,6 +69,7 @@ type call struct {
 	trace    string
 	decision string // last decision id, for X-AISec-Decision-Id
 	action   string // strictest action applied
+	leak     leakCheck
 }
 
 func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -103,8 +104,16 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		c.refuse(http.StatusBadRequest, "invalid_json", "Request body must be a JSON object.")
 		return
 	}
+	stream := ep.alwaysStream
 	if s, _ := body["stream"].(bool); s {
-		c.refuse(http.StatusBadRequest, "streaming_unavailable", "Streaming is not enabled on the AISec gateway yet; send the request without stream.")
+		stream = true
+	}
+	switch {
+	case stream && !ep.streamable:
+		c.refuse(http.StatusBadRequest, "streaming_unavailable", "Streaming is not available for this API through the AISec gateway; send the request without stream.")
+		return
+	case stream && p.Kind == KindGemini && r.URL.Query().Get("alt") != "sse":
+		c.refuse(http.StatusBadRequest, "streaming_unavailable", "Stream with alt=sse through the AISec gateway.")
 		return
 	}
 	if u := r.Header.Get(UserHeader); u != "" {
@@ -121,9 +130,16 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !c.withinQuota(ctx, int64(tokens)) {
 		return
 	}
-	if !c.enforce(ctx, "request", body, ep.reqRoots, in, tokens) {
+	if !c.enforce(ctx, "request", body, ep.reqRoots, in, 0) {
 		return
 	}
+	// FR-PSEC-5: remember the system prompt to spot it in the answer, and plant the app's canary in it.
+	sys, canary := systemPrompt(body), ""
+	if c.app.Canary && sys != "" {
+		canary = g.canary(c.app.ID)
+		addCanary(body, canary)
+	}
+	c.leak = newLeak(sys, canary)
 	if raw, err = json.Marshal(body); err != nil {
 		c.refuse(http.StatusInternalServerError, "internal_error", "Request could not be re-encoded.")
 		return
@@ -135,6 +151,10 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { _ = resp.Body.Close() }()
+	if stream && resp.StatusCode/100 == 2 && strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream") {
+		c.stream(ctx, resp, tokens)
+		return
+	}
 	out, err := io.ReadAll(io.LimitReader(resp.Body, maxResponse+1))
 	if err != nil || len(out) > maxResponse {
 		c.refuse(http.StatusBadGateway, "upstream_response_invalid", "The model provider's response could not be read.")
@@ -151,7 +171,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		c.charge(ctx, used)
 		if ep.respRoots != nil {
 			rin := c.content(rb, ep.respRoots)
-			if !c.enforce(ctx, "response", rb, ep.respRoots, rin, (len(rin.Text)+3)/4) {
+			if !c.enforce(ctx, "response", rb, ep.respRoots, rin, c.leak.score(rin.Text)) {
 				return
 			}
 			if out, err = json.Marshal(rb); err != nil {
@@ -188,12 +208,28 @@ type text struct {
 	sub map[string]any
 }
 
+// scan is what was found in one inspected text.
+type scan struct {
+	res    detect.Result
+	text   string
+	tokens int
+	exfil  float64 // system prompt leak (FR-PSEC-5), responses only
+	// A stream's record keeps no text: its content hash and first snippet are carried instead.
+	hash, snippet string
+}
+
+func scanOf(in *inspect.Content, exfil float64) scan {
+	return scan{res: in.Res, text: in.Text, tokens: (len(in.Text) + 3) / 4, exfil: exfil}
+}
+
 // enforce decides one direction and applies the decision to body. false = a refusal has been written.
-func (c *call) enforce(ctx context.Context, direction string, body map[string]any, roots []string, in text, tokens int) bool {
-	d, eid, err := c.decide(ctx, direction, in.Content, tokens)
+func (c *call) enforce(ctx context.Context, direction string, body map[string]any, roots []string, in text, exfil float64) bool {
+	sc := scanOf(in.Content, exfil)
+	d, err := c.decide(ctx, direction, sc)
 	if err != nil {
-		return c.failMode(ctx, direction, in.Content, tokens)
+		return c.failMode(ctx, direction, sc)
 	}
+	eid := c.record(ctx, direction, sc, d)
 	c.decision = eid
 	c.action = strictest(c.action, d.Action)
 	what := "Request blocked"
@@ -226,73 +262,84 @@ func (c *call) enforce(ctx context.Context, direction string, body map[string]an
 }
 
 // failMode applies the app's fail mode when the PDP cannot decide (spec §13.3).
-func (c *call) failMode(ctx context.Context, direction string, in *inspect.Content, tokens int) bool {
+func (c *call) failMode(ctx context.Context, direction string, sc scan) bool {
+	open := c.failOpen(ctx, direction, sc)
+	if !open {
+		c.action = "block"
+		c.refuse(http.StatusServiceUnavailable, "aisec_policy_unavailable", "The AISec policy service is unavailable and this app fails closed. Retry later. Decision ID: "+c.decision+".")
+	}
+	return open
+}
+
+// failOpen records an undecided inspection and reports whether the app's fail mode lets it through.
+func (c *call) failOpen(ctx context.Context, direction string, sc scan) bool {
 	g := c.g
 	open := c.app.FailMode == FailOpen
 	action, reason := "block", "FAIL_CLOSED"
 	if open {
 		action, reason = "allow", "FAIL_OPEN"
+		g.Log.Warn("PDP unavailable, failing open", "app", c.app.ID, "direction", direction)
 	}
 	g.count(strings.ToLower(reason)+"_total", c.app.ID)
-	eid := uuid.NewString()
-	e := c.event(eid, direction, in, tokens)
-	e.Action, e.ReasonCodes, e.PolicyVersion, e.RiskVersion = action, []string{reason}, "unavailable", "unavailable"
-	c.emit(ctx, e)
-	c.decision = eid
-	if open {
-		g.Log.Warn("PDP unavailable, failing open", "app", c.app.ID, "direction", direction)
-		return true
-	}
-	c.action = "block"
-	c.refuse(http.StatusServiceUnavailable, "aisec_policy_unavailable", "The AISec policy service is unavailable and this app fails closed. Retry later. Decision ID: "+eid+".")
-	return false
+	c.decision = c.record(ctx, direction, sc, mcpgw.Decision{Action: action, ReasonCodes: []string{reason}, PolicyVersion: "unavailable", RiskVersion: "unavailable"})
+	return open
 }
 
-func (c *call) decide(ctx context.Context, direction string, in *inspect.Content, tokens int) (mcpgw.Decision, string, error) {
-	g := c.g
-	classes := make([]any, 0, len(in.Res.Classes))
-	for _, cl := range in.Res.Classes {
+func (c *call) decide(ctx context.Context, direction string, sc scan) (mcpgw.Decision, error) {
+	classes := make([]any, 0, len(sc.res.Classes))
+	for _, cl := range sc.res.Classes {
 		classes = append(classes, map[string]any{"type": cl.Type, "count": cl.Count, "confidence": cl.Confidence})
 	}
+	content := map[string]any{"sensitivity": sc.res.Sensitivity, "classes": classes, "injection_score": sc.res.Injection.Score, "tokens": sc.tokens}
+	if sc.exfil > 0 {
+		content["exfil_score"] = sc.exfil
+	}
 	ptype, pid := c.principal()
-	input := map[string]any{
+	d, err := c.g.Decide(ctx, map[string]any{
 		"channel":     "ai_gateway",
 		"direction":   direction,
 		"principal":   map[string]any{"type": ptype, "id": pid},
 		"destination": map[string]any{"app_id": c.p.AppID, "sanction": c.p.Sanction, "region": c.p.Region},
-		"content":     map[string]any{"sensitivity": in.Res.Sensitivity, "classes": classes, "injection_score": in.Res.Injection.Score, "tokens": tokens},
-	}
-	d, err := g.Decide(ctx, input)
+		"content":     content,
+	})
 	if err != nil {
-		g.Log.Error("PDP", "direction", direction, "err", err)
-		return d, "", err
+		c.g.Log.Error("PDP", "direction", direction, "err", err)
 	}
-	eid := uuid.NewString()
-	e := c.event(eid, direction, in, tokens)
-	e.Action, e.ReasonCodes, e.MatchedRules, e.PolicyVersion = d.Action, nonNil(d.ReasonCodes), d.MatchedRules, d.PolicyVersion
-	e.RiskScore, e.RiskOverrides, e.RiskVersion = d.RiskScore, d.RiskOverrides, d.RiskVersion
-	e.Sanction, e.Region, e.TrainsOnData = d.Destination.Sanction, d.Destination.Region, d.Destination.TrainsOnData
-	c.emit(ctx, e)
-	return d, eid, nil
+	return d, err
 }
 
-func (c *call) event(eid, direction string, in *inspect.Content, tokens int) events.Event {
+// record emits the decision event for one inspection and returns its id (the decision id apps see).
+func (c *call) record(ctx context.Context, direction string, sc scan, d mcpgw.Decision) string {
+	return c.recordAs(ctx, uuid.NewString(), direction, sc, d)
+}
+
+func (c *call) recordAs(ctx context.Context, id, direction string, sc scan, d mcpgw.Decision) string {
 	g := c.g
 	ptype, pid := c.principal()
-	score := in.Res.Injection.Score
-	cls := make([]events.Class, 0, len(in.Res.Classes))
-	for _, cl := range in.Res.Classes {
+	score := sc.res.Injection.Score
+	cls := make([]events.Class, 0, len(sc.res.Classes))
+	for _, cl := range sc.res.Classes {
 		cls = append(cls, events.Class{Type: cl.Type, Count: cl.Count, Confidence: cl.Confidence})
 	}
 	e := events.Event{
-		EventID: eid, TenantID: g.TenantID, TS: g.Now().UTC().Format(time.RFC3339Nano), TraceID: c.trace,
+		EventID: id, TenantID: g.TenantID, TS: g.Now().UTC().Format(time.RFC3339Nano), TraceID: c.trace,
 		Channel: "ai_gateway", Direction: direction, PrincipalID: pid, PrincipalType: ptype, AppID: c.p.AppID, SourceApp: c.app.ID,
-		Classes: cls, ContentHash: g.hmac(in.Text), Sensitivity: in.Res.Sensitivity, InjectionScore: &score, Tokens: &tokens,
+		Classes: cls, ContentHash: g.hmac(sc.text), Sensitivity: sc.res.Sensitivity, InjectionScore: &score, Tokens: &sc.tokens,
+		Action: d.Action, ReasonCodes: nonNil(d.ReasonCodes), MatchedRules: d.MatchedRules, PolicyVersion: d.PolicyVersion,
+		RiskScore: d.RiskScore, RiskOverrides: d.RiskOverrides, RiskVersion: d.RiskVersion,
+		Sanction: d.Destination.Sanction, Region: d.Destination.Region, TrainsOnData: d.Destination.TrainsOnData,
 	}
-	if len(in.Res.Matches) > 0 || len(in.Res.Injection.Evidence) > 0 {
-		e.Snippet = detect.Snippet(in.Text, append(slices.Clone(in.Res.Matches), in.Res.Injection.Evidence...))
+	if sc.exfil > 0 {
+		e.ExfilScore = &sc.exfil
 	}
-	return e
+	if len(sc.res.Matches) > 0 || len(sc.res.Injection.Evidence) > 0 {
+		e.Snippet = detect.Snippet(sc.text, append(slices.Clone(sc.res.Matches), sc.res.Injection.Evidence...))
+	}
+	if sc.hash != "" {
+		e.ContentHash, e.Snippet = sc.hash, sc.snippet
+	}
+	c.emit(ctx, e)
+	return e.EventID
 }
 
 func (c *call) emit(ctx context.Context, e events.Event) {

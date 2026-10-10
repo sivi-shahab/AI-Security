@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -39,6 +40,7 @@ type upstream struct {
 	got    []*http.Request
 	bodies [][]byte
 	reply  []byte
+	sse    []byte // answer to streaming requests
 	status int
 }
 
@@ -47,8 +49,12 @@ func (u *upstream) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	u.mu.Lock()
 	u.got, u.bodies = append(u.got, r), append(u.bodies, b)
 	reply, status := u.reply, u.status
+	stream := bytes.Contains(b, []byte(`"stream":true`)) || strings.Contains(r.URL.Path, "streamGenerateContent")
+	if stream {
+		reply = u.sse
+	}
 	u.mu.Unlock()
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", map[bool]string{true: "text/event-stream", false: "application/json"}[stream])
 	w.Header().Set("X-Request-Id", "req_upstream_1")
 	w.Header().Set("Set-Cookie", "upstream=secret")
 	if status == 0 {
@@ -116,6 +122,7 @@ const (
 	keyChat    = "gw-key-chat-0123456789"
 	keyStrict  = "gw-key-strict-0123456789"
 	keyLimited = "gw-key-limited-0123456789"
+	keyCanary  = "gw-key-canary-0123456789"
 )
 
 func sha(s string) string {
@@ -123,7 +130,7 @@ func sha(s string) string {
 	return hex.EncodeToString(h[:])
 }
 
-func newEnv(t *testing.T) *env {
+func newEnv(t *testing.T, extraRules ...map[string]any) *env {
 	t.Helper()
 	e := &env{t: t, ups: map[string]*upstream{}, pdpUp: true, now: time.Date(2026, 10, 10, 9, 0, 0, 0, time.UTC)}
 	schema, err := events.Compile(events.SchemaV1)
@@ -137,7 +144,20 @@ func newEnv(t *testing.T) *env {
 		"claude":  map[string]any{"sanction": "sanctioned", "region": "US"},
 		"gemini":  map[string]any{"sanction": "sanctioned", "region": "US"},
 	}}
-	pq, err := policysvc.Query(context.Background(), policy.Files, policysvc.Overrides{"aisec.catalog": catalog}, "data.aisec.decision.result")
+	overrides := policysvc.Overrides{"aisec.catalog": catalog}
+	if len(extraRules) > 0 { // a bank's own rules, published on top of the templates
+		raw, err := fs.ReadFile(policy.Files, "aisec/rules/data.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var rules map[string]any
+		_ = json.Unmarshal(raw, &rules)
+		for _, r := range extraRules {
+			rules["items"] = append(rules["items"].([]any), r)
+		}
+		overrides["aisec.rules"] = rules
+	}
+	pq, err := policysvc.Query(context.Background(), policy.Files, overrides, "data.aisec.decision.result")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,6 +197,7 @@ func newEnv(t *testing.T) *env {
 			{ID: "chat-assistant", KeySHA256: sha(keyChat), Providers: all, FailMode: FailOpen},
 			{ID: "credit-scoring", KeySHA256: sha(keyStrict), Providers: []string{"openai", "vllm"}, FailMode: FailClosed},
 			{ID: "limited", KeySHA256: sha(keyLimited), Providers: all, FailMode: FailClosed, RPM: 3, UserRPM: 2, TokensPerDay: 200},
+			{ID: "canary-app", KeySHA256: sha(keyCanary), Providers: all, FailMode: FailClosed, Canary: true},
 		},
 		Providers: providers, Decide: decide, Emit: e.events.emit, Key: (&KeyFiles{}).Key,
 		Count: MemoryCounter(func() time.Time { return e.now }), Upstream: http.DefaultClient,
@@ -479,7 +500,8 @@ func TestRefusals(t *testing.T) {
 		"wrong key":       {"openai", "v1/chat/completions", "sk-real-openai-key", chat, 401, "invalid_gateway_key"},
 		"provider denied": {"anthropic", "v1/messages", keyStrict, chat, 403, "provider_not_allowed"},
 		"unknown API":     {"openai", "v1/files", keyChat, chat, 404, "unsupported_endpoint"},
-		"stream":          {"openai", "v1/chat/completions", keyChat, map[string]any{"model": "m", "stream": true, "messages": chat["messages"]}, 400, "streaming_unavailable"},
+		"stream responses": {"openai", "v1/responses", keyChat, map[string]any{"model": "m", "stream": true, "input": "hi"}, 400, "streaming_unavailable"},
+		"gemini not sse":   {"gemini", "v1beta/models/g:streamGenerateContent", keyChat, map[string]any{"contents": []any{}}, 400, ""},
 		"not JSON":        {"openai", "v1/chat/completions", keyChat, "not json", 400, "invalid_json"},
 	} {
 		r := e.do(c.provider, c.path, c.key, c.body)
@@ -594,6 +616,10 @@ func TestServeForSDK(t *testing.T) {
 	_, oa := golden(t, "openai-chat")
 	_, an := golden(t, "anthropic-messages")
 	e.ups["openai"].reply, e.ups["anthropic"].reply = oa, an
+	// Streams that leak the canary app's marker halfway: the SDKs must see a filtered end, not an error.
+	canary := e.gw.canary("canary-app")
+	leak := []string{strings.Repeat("Branches open at eight. ", 60), "My reference is " + canary + ".", " More text."}
+	e.ups["vllm"].sse, e.ups["anthropic"].sse = sseOf(KindOpenAI, leak), sseOf(KindAnthropic, leak)
 	mux := http.NewServeMux()
 	e.gw.Routes(mux)
 	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}

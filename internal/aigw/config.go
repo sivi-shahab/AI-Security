@@ -30,6 +30,9 @@ type App struct {
 	// FailMode when the PDP cannot decide (spec §13.3): fail_closed (default) refuses, fail_open forwards and
 	// raises fail_open_total. Use fail_open only for general chat that never carries restricted data.
 	FailMode string `json:"fail_mode"`
+	// Canary plants a per-app secret marker in the system prompt; an answer that repeats it is a system prompt
+	// leak (FR-PSEC-5). Long verbatim runs of the system prompt are caught with or without it.
+	Canary bool `json:"canary"`
 	// Limits (FR-PSEC-9); 0 = unlimited. Users are the X-AISec-User the app forwards.
 	RPM              int64 `json:"rpm"`
 	UserRPM          int64 `json:"user_rpm"`

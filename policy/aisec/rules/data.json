@@ -151,6 +151,16 @@
       "reason": "PROMPT_INJECTION"
     },
     {
+      "id": "tpl.system-prompt-leak",
+      "description": "FR-PSEC-5: response yang memuat canary app atau potongan panjang system prompt-nya (exfil_score >= 0.8) = block.",
+      "when": [
+        {"field": "direction", "op": "eq", "value": "response"},
+        {"field": "content.exfil_score", "op": "gte", "value": 0.8}
+      ],
+      "action": "block",
+      "reason": "SYSTEM_PROMPT_LEAK"
+    },
+    {
       "id": "res.offshore-restricted",
       "description": "ADR-0001: konten restricted tidak boleh ke pemrosesan di luar Indonesia.",
       "when": [

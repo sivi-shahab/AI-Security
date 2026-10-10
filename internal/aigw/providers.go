@@ -18,10 +18,11 @@ const (
 // text it wrote sits in the response. Only these keys are walked, and inside them skipKeys are pruned, so roles,
 // ids and base64 media never reach the detector.
 type endpoint struct {
-	name       string
-	reqRoots   []string
-	respRoots  []string // nil: nothing to inspect (embeddings are vectors)
-	streamable bool
+	name         string
+	reqRoots     []string
+	respRoots    []string // nil: nothing to inspect (embeddings are vectors)
+	streamable   bool     // "stream": true is supported (ticket 14)
+	alwaysStream bool     // the endpoint only streams (Gemini streamGenerateContent)
 }
 
 var endpoints = map[string][]struct {
@@ -30,17 +31,20 @@ var endpoints = map[string][]struct {
 	ep     endpoint
 }{
 	KindOpenAI: {
-		{"POST", regexp.MustCompile(`^v1/chat/completions$`), endpoint{"chat.completions", []string{"messages"}, []string{"choices"}, true}},
-		{"POST", regexp.MustCompile(`^v1/responses$`), endpoint{"responses", []string{"input", "instructions"}, []string{"output"}, true}},
-		{"POST", regexp.MustCompile(`^v1/embeddings$`), endpoint{"embeddings", []string{"input"}, nil, false}},
+		{"POST", regexp.MustCompile(`^v1/chat/completions$`), endpoint{"chat.completions", []string{"messages"}, []string{"choices"}, true, false}},
+		{"POST", regexp.MustCompile(`^v1/responses$`), endpoint{"responses", []string{"input", "instructions"}, []string{"output"}, false, false}},
+		{"POST", regexp.MustCompile(`^v1/embeddings$`), endpoint{"embeddings", []string{"input"}, nil, false, false}},
 	},
 	KindAnthropic: {
-		{"POST", regexp.MustCompile(`^v1/messages$`), endpoint{"messages", []string{"system", "messages"}, []string{"content"}, true}},
+		{"POST", regexp.MustCompile(`^v1/messages$`), endpoint{"messages", []string{"system", "messages"}, []string{"content"}, true, false}},
 	},
 	KindGemini: {
-		{"POST", regexp.MustCompile(`^v1(beta)?/models/[A-Za-z0-9._-]+:generateContent$`), endpoint{"generateContent", []string{"contents", "systemInstruction", "system_instruction"}, []string{"candidates"}, false}},
+		{"POST", regexp.MustCompile(`^v1(beta)?/models/[A-Za-z0-9._-]+:generateContent$`), endpoint{"generateContent", geminiRoots, []string{"candidates"}, false, false}},
+		{"POST", regexp.MustCompile(`^v1(beta)?/models/[A-Za-z0-9._-]+:streamGenerateContent$`), endpoint{"streamGenerateContent", geminiRoots, []string{"candidates"}, true, true}},
 	},
 }
+
+var geminiRoots = []string{"contents", "systemInstruction", "system_instruction"}
 
 func findEndpoint(kind, method, path string) (endpoint, bool) {
 	for _, e := range endpoints[kind] {
