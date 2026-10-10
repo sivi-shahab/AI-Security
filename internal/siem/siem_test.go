@@ -5,11 +5,13 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -207,6 +209,51 @@ func TestHTTPSink(t *testing.T) {
 	_ = h.Send(context.Background(), []Record{FromEvent(event())})
 	if !strings.HasPrefix(bodies[len(bodies)-1], `[{`) {
 		t.Errorf("json array body: %s", bodies[len(bodies)-1])
+	}
+}
+
+// Ticket 26: the SOAR webhook gets only incident records from the audit stream, signed so it can check origin.
+func TestSOARWebhook(t *testing.T) {
+	secret := []byte(strings.Repeat("k", 32))
+	var got []Record
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		mac := hmac.New(sha256.New, secret)
+		mac.Write([]byte(r.Header.Get("X-AISec-Timestamp") + "."))
+		mac.Write(b)
+		ts, _ := strconv.ParseInt(r.Header.Get("X-AISec-Timestamp"), 10, 64)
+		if !hmac.Equal([]byte(r.Header.Get("X-AISec-Signature")), []byte("sha256="+hex.EncodeToString(mac.Sum(nil)))) || time.Since(time.Unix(ts, 0)) > time.Minute {
+			w.WriteHeader(401)
+			return
+		}
+		var recs []Record
+		_ = json.Unmarshal(b, &recs)
+		got = append(got, recs...)
+	}))
+	defer srv.Close()
+	soar := &Filtered{Label: "soar", Keep: SOARRecord, Sink: &HTTP{URL: srv.URL, Format: "json", Header: http.Header{}, Secret: secret, Client: srv.Client()}}
+	at := time.Now()
+	recs := []Record{
+		FromEvent(event()),
+		FromAudit(audit.Entry{Seq: 1, TS: at, Actor: "system", Action: "incident.breach.escalate", Target: map[string]any{"incident": "i1", "remaining_hours": 23}}),
+		FromAudit(audit.Entry{Seq: 2, TS: at, Actor: "alice", Action: "policy.version.approve", Target: map[string]any{}}),
+		FromAudit(audit.Entry{Seq: 3, TS: at, Actor: "soc1", Action: "incident.contain", Target: map[string]any{"action": "block_access"}}),
+	}
+	if err := soar.Send(context.Background(), recs); err != nil || soar.Name() != "soar" {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].Name != "incident.breach.escalate" || got[0].Severity != 9 || got[1].Name != "incident.contain" {
+		t.Errorf("SOAR got %+v", got)
+	}
+	// Nothing for the SOAR in a batch: no request at all.
+	if err := soar.Send(context.Background(), recs[:1]); err != nil || len(got) != 2 {
+		t.Errorf("empty batch: %v, %d records", err, len(got))
+	}
+	// A wrong key is refused by the receiver (permanent: retrying with the same key cannot help).
+	bad := &HTTP{URL: srv.URL, Format: "json", Header: http.Header{}, Secret: []byte("wrong"), Client: srv.Client()}
+	var perm *PermanentError
+	if err := bad.Send(context.Background(), recs[1:2]); !errors.As(err, &perm) {
+		t.Errorf("wrong key: %v", err)
 	}
 }
 

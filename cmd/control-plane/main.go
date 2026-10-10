@@ -41,7 +41,8 @@ import (
 // TENANT_ID, TENANT_PEPPER (similarity fingerprints, ticket 37), TIKA_URL (optional: PDF registration), PUBLIC_URL, CATALOG_FEED_URL + CATALOG_FEED_PUBKEY_FILE (signed app catalog feed), OPENSEARCH_URL/USER/PASSWORD (policy simulation reads stored events), and identity (ADR-0002): OIDC_ISSUER, OIDC_AUDIENCE, OIDC_MFA_ACR (comma-separated acr
 // values that mean MFA), BREAK_GLASS_SUBS (comma-separated token subs), SCIM_TOKEN_SHA256 (hex),
 // MCP_GATEWAY_TOKEN_SHA256 (hex; the MCP gateway reporting tools/list and asking for approvals, tickets 29-30),
-// APPROVAL_TTL (Go duration, default 15m), APPROVAL_WEBHOOK_URL (chat webhook for new approval requests; optional).
+// APPROVAL_TTL (Go duration, default 15m), APPROVAL_WEBHOOK_URL (chat webhook for new approval requests; optional),
+// ITSM_* (incident tickets; see wireIncidents).
 func main() {
 	// `control-plane audit anchor|verify ...`: run by the audit-anchor CronJob or via kubectl exec.
 	if len(os.Args) > 1 && os.Args[1] == "audit" {
@@ -102,6 +103,9 @@ func main() {
 	if err := riskcal.Open(ctx, riskWeights); err != nil {
 		fail("riskcal schema", err)
 	}
+	// Containment blocks ride in every release too (ticket 26).
+	policies.AddExtra(incident.ContainmentDoc(os.Getenv("TENANT_ID")))
+	incidents.Release = policies.CutRelease
 	// The app catalog joins every release (ticket 16): open it before the first bundle is built.
 	var feedKey []byte
 	if f := os.Getenv("CATALOG_FEED_PUBKEY_FILE"); f != "" {
@@ -214,6 +218,13 @@ func main() {
 		_, _ = fmt.Fprintf(w, "# TYPE incident_ack_overdue gauge\nincident_ack_overdue %d\n", n)
 		_, _ = fmt.Fprintf(w, "# TYPE breakglass_requests_total counter\nbreakglass_requests_total %d\n", breakGlassRequests.Load())
 		_, _ = fmt.Fprintf(w, "# TYPE policy_release_current gauge\npolicy_release_current %d\n", releaser.Current())
+		// FR-INC-6: alert on breach_timer_remaining_hours < 24 (the sweep also escalates and notifies the SIEM/SOAR).
+		if running, least, err := incidents.BreachTimers(r.Context(), time.Now()); err == nil {
+			_, _ = fmt.Fprintf(w, "# TYPE breach_timers_running gauge\nbreach_timers_running %d\n", running)
+			if least != nil {
+				_, _ = fmt.Fprintf(w, "# TYPE breach_timer_remaining_hours gauge\nbreach_timer_remaining_hours %g\n", *least)
+			}
+		}
 		if n, err := policies.ExpiringSoon(r.Context(), time.Now()); err == nil {
 			_, _ = fmt.Fprintf(w, "# TYPE policy_exceptions_expiring gauge\npolicy_exceptions_expiring %d\n", n)
 		}
@@ -290,10 +301,14 @@ func main() {
 	}
 	tuner := &tuning.Store{DB: db, Tenant: os.Getenv("TENANT_ID"), Pepper: []byte(os.Getenv("TENANT_PEPPER"))}
 	riskWeights.Source = search.Events
+	remediations := &remediate.Store{DB: db, Tenant: os.Getenv("TENANT_ID")}
+	if err := wireIncidents(ctx, incidents, registry, remediations, log); err != nil {
+		fail("incident integrations", err)
+	}
 	routes(rt, deps{bundles: bundles, scim: ids.SCIMHandler(scimHash, os.Getenv("PUBLIC_URL")), metrics: metrics, mcpGateway: registry.GatewayHandler(mcpHash, time.Now), incidents: incidents, identity: ids,
 		policies: policies, simulator: simulator, apps: apps, feedKey: feedKey,
 		posture: postureSrc, compliance: complianceStore, complianceSources: complianceSrc, register: register,
-		agents: registry, data: db, remediations: &remediate.Store{DB: db, Tenant: os.Getenv("TENANT_ID")}, corpus: confidential, tuning: tuner, risk: riskWeights})
+		agents: registry, data: db, remediations: remediations, corpus: confidential, tuning: tuner, risk: riskWeights})
 	server.Run("control-plane", rt.Mux)
 	cancel()
 	kc.Close()

@@ -32,7 +32,7 @@ func uuid() string {
 }
 
 func event(principal string, at time.Time, risk int, classes ...string) (events.Event, []byte) {
-	e := events.Event{EventID: uuid(), TenantID: tenant, TS: at.UTC().Format(time.RFC3339Nano), TraceID: strings.Repeat("a", 32),
+	e := events.Event{EventID: uuid(), TenantID: tenant, TS: at.UTC().Format(time.RFC3339Nano), TraceID: strings.ReplaceAll(uuid(), "-", ""),
 		Channel: "ai_gateway", Direction: "request", PrincipalID: principal, AppID: "chatgpt", Action: "block",
 		ReasonCodes: []string{"R"}, MatchedRules: []string{"tpl.x"}, PolicyVersion: "builtin-1", RiskScore: risk, RiskVersion: "risk-1",
 		ContentHash: strings.Repeat("b", 64)}

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"aisec/internal/authz"
@@ -20,6 +21,8 @@ func Routes(rt *authz.Router, s *Store, now func() time.Time) {
 			http.Error(w, err.Error(), http.StatusForbidden)
 		case errors.Is(err, ErrInvalidTransition):
 			http.Error(w, err.Error(), http.StatusConflict)
+		case errors.Is(err, ErrInvalid):
+			http.Error(w, err.Error(), http.StatusBadRequest)
 		case err != nil:
 			http.Error(w, "internal error", http.StatusInternalServerError)
 		default:
@@ -51,7 +54,22 @@ func Routes(rt *authz.Router, s *Store, now func() time.Time) {
 			return
 		}
 		ev, err := s.Evidence(r.Context(), id)
-		reply(w, map[string]any{"incident": inc, "events": evs, "evidence": ev}, err)
+		if err != nil {
+			reply(w, nil, err)
+			return
+		}
+		acts, err := s.ActionsOf(r.Context(), id)
+		if err != nil {
+			reply(w, nil, err)
+			return
+		}
+		blocks, err := s.BlocksOf(r.Context(), id)
+		if err != nil {
+			reply(w, nil, err)
+			return
+		}
+		ticket, err := s.TicketOf(r.Context(), id)
+		reply(w, map[string]any{"incident": inc, "events": evs, "evidence": ev, "actions": acts, "blocks": blocks, "ticket": ticket}, err)
 	})
 	rt.Handle("POST /incidents/{id}/transition", authz.IncidentWrite, func(w http.ResponseWriter, r *http.Request, c authz.Caller) {
 		var body struct {
@@ -99,5 +117,64 @@ func Routes(rt *authz.Router, s *Store, now func() time.Time) {
 		w.Header().Set("Content-Type", "application/octet-stream")
 		w.Header().Set("Cache-Control", "no-store")
 		_, _ = w.Write(raw)
+	})
+
+	// FR-INC-5: {"action": "block_access"|"open_ticket"|…, "params": {…}}. Also the SOAR playbook entry point (a
+	// service account with incident.write).
+	rt.Handle("POST /incidents/{id}/actions", authz.IncidentWrite, func(w http.ResponseWriter, r *http.Request, c authz.Caller) {
+		var body struct {
+			Action string            `json:"action"`
+			Params map[string]string `json:"params"`
+		}
+		if err := decode(r, &body); err != nil {
+			reply(w, nil, ErrInvalid)
+			return
+		}
+		v, err := s.Contain(r.Context(), c, r.PathValue("id"), body.Action, body.Params, now())
+		reply(w, v, err)
+	})
+	rt.Handle("POST /incidents/{id}/blocks/{bid}/lift", authz.IncidentWrite, func(w http.ResponseWriter, r *http.Request, c authz.Caller) {
+		bid, err := strconv.ParseInt(r.PathValue("bid"), 10, 64)
+		if err != nil {
+			reply(w, nil, ErrNotFound)
+			return
+		}
+		n, err := s.LiftBlock(r.Context(), r.PathValue("id"), bid, c.Username, now())
+		reply(w, map[string]any{"release": n}, err)
+	})
+
+	// FR-INC-6 breach workflow. The SOC declares; the DPO closes the timer (notified or dismissed).
+	rt.Handle("POST /incidents/{id}/breach/declare", authz.IncidentWrite, func(w http.ResponseWriter, r *http.Request, c authz.Caller) {
+		var body struct {
+			Note string `json:"note"`
+		}
+		if err := decode(r, &body); err != nil {
+			reply(w, nil, ErrInvalid)
+			return
+		}
+		v, err := s.DeclareBreach(r.Context(), r.PathValue("id"), body.Note, c.Username, now())
+		reply(w, v, err)
+	})
+	rt.Handle("POST /incidents/{id}/breach/close", authz.ComplianceWrite, func(w http.ResponseWriter, r *http.Request, c authz.Caller) {
+		var body struct {
+			Outcome string `json:"outcome"`
+			Note    string `json:"note"`
+		}
+		if err := decode(r, &body); err != nil {
+			reply(w, nil, ErrInvalid)
+			return
+		}
+		v, err := s.CloseBreach(r.Context(), r.PathValue("id"), body.Outcome, body.Note, c.Username, now())
+		reply(w, v, err)
+	})
+	// The draft report: JSON, or ?format=md for the DPO.
+	rt.Handle("GET /incidents/{id}/breach/report", authz.IncidentRead, func(w http.ResponseWriter, r *http.Request, c authz.Caller) {
+		rep, err := s.DraftBreachReport(r.Context(), r.PathValue("id"), c.Username, now())
+		if err == nil && r.URL.Query().Get("format") == "md" {
+			w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+			_, _ = w.Write([]byte(rep.Markdown()))
+			return
+		}
+		reply(w, rep, err)
 	})
 }

@@ -93,6 +93,15 @@ exempted contains r if {
 	input.agent.approval_granted == true
 }
 
+# FR-INC-5 containment: the SOC blocked this principal from this app (data.aisec.containment, released by the
+# incident module). Not a rule in the rule set, so no policy edit or exception can lift it; only the SOC.
+enforced contains {"id": "containment.block", "action": "block", "reason": "CONTAINMENT_BLOCK"} if {
+	some b in data.aisec.containment.blocks
+	b.principal_id == input.principal.id
+	b.app_id == dest.destination.app_id
+	time.now_ns() < time.parse_rfc3339_ns(b.expires_at)
+}
+
 in_scope("principal_id", v) if input.principal.id == v
 
 in_scope("group", v) if v in object.get(input.principal, "groups", [])

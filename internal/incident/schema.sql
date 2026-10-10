@@ -53,3 +53,52 @@ CREATE TABLE IF NOT EXISTS incident.transitions (
   note        text        NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS transitions_incident ON incident.transitions (incident_id, at);
+
+-- FR-INC-1 chain: events of one trace (an agent session at the MCP gateway) land in one incident.
+ALTER TABLE incident.incident_events ADD COLUMN IF NOT EXISTS trace_id text;
+CREATE INDEX IF NOT EXISTS incident_events_trace ON incident.incident_events (trace_id, ts) WHERE trace_id IS NOT NULL;
+
+-- FR-INC-6 breach workflow (UU PDP Pasal 46): the 3×24 h notification timer.
+ALTER TABLE incident.incidents ADD COLUMN IF NOT EXISTS breach_started_at   timestamptz;
+ALTER TABLE incident.incidents ADD COLUMN IF NOT EXISTS breach_deadline     timestamptz;
+ALTER TABLE incident.incidents ADD COLUMN IF NOT EXISTS breach_basis        text;  -- auto (personal data allowed out) | declared
+ALTER TABLE incident.incidents ADD COLUMN IF NOT EXISTS breach_escalated_at timestamptz;
+ALTER TABLE incident.incidents ADD COLUMN IF NOT EXISTS breach_drafted_at   timestamptz;  -- first draft report
+ALTER TABLE incident.incidents ADD COLUMN IF NOT EXISTS breach_closed_at    timestamptz;  -- notified or dismissed
+ALTER TABLE incident.incidents ADD COLUMN IF NOT EXISTS breach_outcome      text CHECK (breach_outcome IN ('notified', 'dismissed'));
+CREATE INDEX IF NOT EXISTS incidents_breach_open ON incident.incidents (breach_deadline) WHERE breach_started_at IS NOT NULL AND breach_closed_at IS NULL;
+
+-- FR-INC-5 containment actions taken on an incident (and what they returned: kill id, ticket number, …).
+CREATE TABLE IF NOT EXISTS incident.actions (
+  id          bigserial PRIMARY KEY,
+  incident_id uuid        NOT NULL REFERENCES incident.incidents(id),
+  action      text        NOT NULL,
+  params      jsonb       NOT NULL,
+  result      jsonb       NOT NULL,
+  actor       text        NOT NULL,
+  at          timestamptz NOT NULL
+);
+CREATE INDEX IF NOT EXISTS actions_incident ON incident.actions (incident_id, at);
+
+-- Containment block: this principal may not reach this app until expires_at or lifted (data.aisec.containment).
+CREATE TABLE IF NOT EXISTS incident.blocks (
+  id           bigserial PRIMARY KEY,
+  tenant_id    uuid        NOT NULL,
+  incident_id  uuid        NOT NULL REFERENCES incident.incidents(id),
+  principal_id text        NOT NULL,
+  app_id       text        NOT NULL,
+  expires_at   timestamptz NOT NULL,
+  created_by   text        NOT NULL,
+  created_at   timestamptz NOT NULL,
+  lifted_by    text,
+  lifted_at    timestamptz
+);
+
+-- ITSM ticket per incident (ServiceNow / Jira SM): one, reused.
+CREATE TABLE IF NOT EXISTS incident.tickets (
+  incident_id uuid        PRIMARY KEY REFERENCES incident.incidents(id),
+  system      text        NOT NULL,
+  ref         text        NOT NULL,
+  url         text        NOT NULL,
+  created_at  timestamptz NOT NULL
+);

@@ -460,3 +460,26 @@ test_approval_lifts_only_require_approval if {
 	b := decision.result with input as agent_call("invoice-bot", object.union(tainted, {"approval_granted": true, "scope_violations": 1})) with data.aisec.agents as agents
 	b.action == "block"
 }
+
+# --- ticket 26: containment block ---------------------------------------------------------------------------
+
+test_containment_block if {
+	blocks := [{"principal_id": "u-hmac-1", "app_id": "copilot", "expires_at": "2099-01-01T00:00:00Z", "incident": "i1"}]
+	r := decision.result with input as base with data.aisec.containment.blocks as blocks
+	r.action == "block"
+	r.reason_codes == ["CONTAINMENT_BLOCK"]
+	r.matched_rules == ["containment.block"]
+	# Another app, another principal, or an expired block: no effect.
+	other := with_patch({"destination": {"app_id": "chatgpt", "sanction": "sanctioned", "region": "ID"}})
+	r2 := decision.result with input as other with data.aisec.containment.blocks as blocks
+	not "CONTAINMENT_BLOCK" in r2.reason_codes
+	r3 := decision.result with input as with_patch({"principal": {"type": "user", "id": "u-hmac-2"}}) with data.aisec.containment.blocks as blocks
+	not "CONTAINMENT_BLOCK" in r3.reason_codes
+	expired := [object.union(blocks[0], {"expires_at": "2020-01-01T00:00:00Z"})]
+	r4 := decision.result with input as base with data.aisec.containment.blocks as expired
+	r4.action == "allow"
+	# An exception for every rule does not lift it.
+	ex := [{"rules": ["containment.block"], "scope": {"principal_id": "u-hmac-1"}, "expires_at": "2099-01-01T00:00:00Z"}]
+	r5 := decision.result with input as base with data.aisec.containment.blocks as blocks with data.aisec.exceptions.items as ex
+	r5.action == "block"
+}

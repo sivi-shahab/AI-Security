@@ -34,6 +34,12 @@ type Store struct {
 	db    *pgxpool.Pool
 	audit *audit.Store
 	kek   []byte // wraps per-incident DEKs. ponytail: file key; a KMS/HSM unwrap call when spec §10.1's KMS lands
+
+	// Release cuts a policy release inside tx (lifecycle.CutRelease), so containment blocks reach every PDP with the
+	// next bundle. nil: blocks are refused.
+	Release func(ctx context.Context, tx pgx.Tx, actor, reason string) (int64, error)
+	ITSM    Ticketer          // nil: no ITSM configured, open_ticket is refused
+	Actions map[string]Action // FR-INC-5 containment actions by name; Open adds block_access and open_ticket
 }
 
 func Open(ctx context.Context, db *pgxpool.Pool, auditLog *audit.Store, kek []byte) (*Store, error) {
@@ -43,7 +49,12 @@ func Open(ctx context.Context, db *pgxpool.Pool, auditLog *audit.Store, kek []by
 	if _, err := db.Exec(ctx, schemaSQL); err != nil {
 		return nil, fmt.Errorf("apply incident schema: %w", err)
 	}
-	return &Store{db: db, audit: auditLog, kek: kek}, nil
+	s := &Store{db: db, audit: auditLog, kek: kek}
+	s.Actions = map[string]Action{
+		"block_access": {Run: s.blockAccess},
+		"open_ticket":  {Run: s.openTicket},
+	}
+	return s, nil
 }
 
 // Ingest folds one decision event into incidents: below MinRisk it is ignored; otherwise it joins the open incident
@@ -56,21 +67,36 @@ func (s *Store) Ingest(ctx context.Context, e events.Event, raw []byte, now time
 	if err != nil {
 		return "", false, err
 	}
-	key, sev := DedupKey(e), SeverityFor(e.RiskScore)
+	key, sev, trace := DedupKey(e), SeverityFor(e.RiskScore), chainTrace(e)
 	err = pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
-		// Serialize per key so two consumers cannot open twin incidents.
-		if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1 || '|' || $2, 0))", e.TenantID, key); err != nil {
-			return err
+		// Serialize per trace, then per key (always in that order), so two consumers cannot open twin incidents.
+		for _, k := range []string{"trace|" + trace, key} {
+			if k == "trace|" {
+				continue
+			}
+			if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1 || '|' || $2, 0))", e.TenantID, k); err != nil {
+				return err
+			}
 		}
 		if err := tx.QueryRow(ctx, "SELECT incident_id FROM incident.incident_events WHERE event_id = $1", e.EventID).Scan(&id); err == nil {
 			return nil
 		} else if !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}
-		err := tx.QueryRow(ctx, `SELECT id FROM incident.incidents
-			WHERE tenant_id = $1 AND dedup_key = $2 AND state = ANY($3)
-			  AND $4 BETWEEN first_event_at - $5::interval AND last_event_at + $5::interval
-			ORDER BY last_event_at DESC LIMIT 1`, e.TenantID, key, OpenStates, ts, DedupWindow.String()).Scan(&id)
+		// FR-INC-1 chain: an event whose trace (an agent session at the MCP gateway) already has an open incident
+		// joins it, whatever its key: prompt -> tool call -> result is one story. Otherwise the dedup key decides.
+		err := pgx.ErrNoRows
+		if trace != "" {
+			err = tx.QueryRow(ctx, `SELECT ie.incident_id FROM incident.incident_events ie JOIN incident.incidents i ON i.id = ie.incident_id
+				WHERE ie.trace_id = $1 AND i.tenant_id = $2 AND i.state = ANY($3) AND ie.ts BETWEEN $4::timestamptz - $5::interval AND $4::timestamptz + $5::interval
+				ORDER BY ie.ts DESC LIMIT 1`, trace, e.TenantID, OpenStates, ts, DedupWindow.String()).Scan(&id)
+		}
+		if errors.Is(err, pgx.ErrNoRows) {
+			err = tx.QueryRow(ctx, `SELECT id FROM incident.incidents
+				WHERE tenant_id = $1 AND dedup_key = $2 AND state = ANY($3)
+				  AND $4 BETWEEN first_event_at - $5::interval AND last_event_at + $5::interval
+				ORDER BY last_event_at DESC LIMIT 1`, e.TenantID, key, OpenStates, ts, DedupWindow.String()).Scan(&id)
+		}
 		switch {
 		case errors.Is(err, pgx.ErrNoRows):
 			created = true
@@ -109,11 +135,22 @@ func (s *Store) Ingest(ctx context.Context, e events.Event, raw []byte, now time
 		if err != nil {
 			return err
 		}
-		_, err = tx.Exec(ctx, "INSERT INTO incident.incident_events (incident_id, event_id, ts, risk_score, event) VALUES ($1, $2, $3, $4, $5)",
-			id, e.EventID, ts, e.RiskScore, json.RawMessage(raw))
-		return err
+		_, err = tx.Exec(ctx, "INSERT INTO incident.incident_events (incident_id, event_id, ts, risk_score, event, trace_id) VALUES ($1, $2, $3, $4, $5, nullif($6, ''))",
+			id, e.EventID, ts, e.RiskScore, json.RawMessage(raw), trace)
+		if err != nil || !Exposed(e) {
+			return err
+		}
+		return s.startBreach(ctx, tx, id, "auto", "system", fmt.Sprintf("event %s: personal data allowed to %s", e.EventID, e.AppID), now)
 	})
 	return id, created, err
+}
+
+// chainTrace is the trace an event chains on; "" for a missing or all-zero trace id, which correlates nothing.
+func chainTrace(e events.Event) string {
+	if strings.Trim(e.TraceID, "0") == "" {
+		return ""
+	}
+	return e.TraceID
 }
 
 func title(e events.Event) string {
@@ -174,17 +211,37 @@ type Incident struct {
 	AcknowledgedAt *time.Time `json:"acknowledged_at,omitempty"`
 	ResolvedAt     *time.Time `json:"resolved_at,omitempty"`
 	ClosedAt       *time.Time `json:"closed_at,omitempty"`
+	Breach         *Breach    `json:"breach,omitempty"`
+}
+
+// Breach is the FR-INC-6 timer of an incident (UU PDP Pasal 46: notify within 3×24 hours).
+type Breach struct {
+	StartedAt   time.Time  `json:"started_at"`
+	Deadline    time.Time  `json:"deadline"`
+	Basis       string     `json:"basis"` // auto | declared
+	EscalatedAt *time.Time `json:"escalated_at,omitempty"`
+	DraftedAt   *time.Time `json:"drafted_at,omitempty"`
+	ClosedAt    *time.Time `json:"closed_at,omitempty"`
+	Outcome     string     `json:"outcome,omitempty"` // notified | dismissed
 }
 
 const incidentCols = `id, tenant_id::text, title, state, severity, max_risk, event_count, first_event_at, last_event_at, opened_at,
-	ack_deadline, acknowledged_at, resolved_at, closed_at`
+	ack_deadline, acknowledged_at, resolved_at, closed_at,
+	breach_started_at, breach_deadline, coalesce(breach_basis, ''), breach_escalated_at, breach_drafted_at, breach_closed_at, coalesce(breach_outcome, '')`
 
 func scanIncident(row pgx.Row) (Incident, error) {
 	var i Incident
+	var b Breach
+	var started, deadline *time.Time
 	err := row.Scan(&i.ID, &i.TenantID, &i.Title, &i.State, &i.Severity, &i.MaxRisk, &i.EventCount, &i.FirstEventAt, &i.LastEventAt,
-		&i.OpenedAt, &i.AckDeadline, &i.AcknowledgedAt, &i.ResolvedAt, &i.ClosedAt)
+		&i.OpenedAt, &i.AckDeadline, &i.AcknowledgedAt, &i.ResolvedAt, &i.ClosedAt,
+		&started, &deadline, &b.Basis, &b.EscalatedAt, &b.DraftedAt, &b.ClosedAt, &b.Outcome)
 	if errors.Is(err, pgx.ErrNoRows) {
 		err = ErrNotFound
+	}
+	if started != nil && deadline != nil {
+		b.StartedAt, b.Deadline = *started, *deadline
+		i.Breach = &b
 	}
 	return i, err
 }

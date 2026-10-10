@@ -3,11 +3,15 @@ package siem
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"crypto/tls"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -77,6 +81,10 @@ type HTTP struct {
 	URL, Format string
 	Header      http.Header
 	Client      *http.Client
+	// Secret, if set, signs each request (the SOAR webhook): X-AISec-Timestamp (Unix seconds) and
+	// X-AISec-Signature = "sha256=" + hex HMAC-SHA256(Secret, timestamp + "." + body), so the receiver can check
+	// origin and freshness.
+	Secret []byte
 }
 
 func (h *HTTP) Name() string { return "http-" + h.Format }
@@ -92,6 +100,14 @@ func (h *HTTP) Send(ctx context.Context, recs []Record) error {
 	}
 	req.Header = h.Header.Clone()
 	req.Header.Set("Content-Type", ct)
+	if h.Secret != nil {
+		ts := fmt.Sprint(time.Now().Unix())
+		mac := hmac.New(sha256.New, h.Secret)
+		mac.Write([]byte(ts + "."))
+		mac.Write(body)
+		req.Header.Set("X-AISec-Timestamp", ts)
+		req.Header.Set("X-AISec-Signature", "sha256="+hex.EncodeToString(mac.Sum(nil)))
+	}
 	resp, err := h.Client.Do(req)
 	if err != nil {
 		return err
@@ -105,3 +121,29 @@ func (h *HTTP) Send(ctx context.Context, recs []Record) error {
 	}
 	return fmt.Errorf("%s: HTTP %d", h.URL, resp.StatusCode)
 }
+
+// Filtered hands a sink only the records Keep accepts, under its own name (metrics, DLQ): the SOAR webhook takes the
+// incident records of the audit stream.
+type Filtered struct {
+	Sink
+	Label string
+	Keep  func(Record) bool
+}
+
+func (f *Filtered) Name() string { return f.Label }
+
+func (f *Filtered) Send(ctx context.Context, recs []Record) error {
+	var keep []Record
+	for _, r := range recs {
+		if f.Keep(r) {
+			keep = append(keep, r)
+		}
+	}
+	if len(keep) == 0 {
+		return nil
+	}
+	return f.Sink.Send(ctx, keep)
+}
+
+// SOARRecord: incident lifecycle from the audit log (open, escalate, breach timer, containment).
+func SOARRecord(r Record) bool { return r.Source == "audit" && strings.HasPrefix(r.Name, "incident.") }

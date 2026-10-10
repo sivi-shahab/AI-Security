@@ -109,11 +109,12 @@ func FromEvent(e events.Event) Record {
 // auditSeverity: what a SOC should look at first.
 func auditSeverity(action string) int {
 	switch {
-	case strings.HasPrefix(action, "breakglass."), strings.HasSuffix(action, ".denied"):
+	case strings.HasPrefix(action, "breakglass."), strings.HasSuffix(action, ".denied"), action == "incident.breach.escalate":
 		return 9
 	case strings.Contains(action, "unmask"), action == "access.sensitive", strings.HasPrefix(action, "identity.role."),
 		action == "policy.version.approve", action == "policy.rollback", action == "policy.retire",
-		strings.HasPrefix(action, "policy.exception.approve"), action == "incident.open", action == "incident.escalate":
+		strings.HasPrefix(action, "policy.exception.approve"), action == "incident.open", action == "incident.escalate",
+		strings.HasPrefix(action, "incident.breach."), action == "incident.contain":
 		return 7
 	}
 	return 3

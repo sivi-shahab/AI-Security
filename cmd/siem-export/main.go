@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
@@ -30,7 +31,7 @@ const DLQTopic = "aisec.siem.dlq.v1"
 // Env: KAFKA_BROKERS, SCHEMA_REGISTRY_URL, DATABASE_URL (audit log + cursor), SIEM_MIN_RISK (default 40),
 // syslog sink: SIEM_SYSLOG_ADDR, SIEM_SYSLOG_CA_FILE (TLS; SIEM_SYSLOG_PLAINTEXT=true only for a local collector),
 // HTTP sink: SIEM_HTTP_URL, SIEM_HTTP_FORMAT (hec|json), SIEM_HTTP_AUTH_FILE (Authorization header value),
-// ALERTMANAGER_TOKEN_SHA256 (hex). At least one sink.
+// ALERTMANAGER_TOKEN_SHA256 (hex), SOAR webhook: SOAR_WEBHOOK_URL + SOAR_WEBHOOK_SECRET_FILE (HMAC key). At least one sink.
 func main() {
 	log := privacy.NewLogger("siem-export")
 	fail := func(msg string, err error) {
@@ -62,6 +63,15 @@ func main() {
 			h.Set("Authorization", strings.TrimSpace(string(auth)))
 		}
 		sinks = append(sinks, &siem.HTTP{URL: url, Format: os.Getenv("SIEM_HTTP_FORMAT"), Header: h, Client: &http.Client{Timeout: 30 * time.Second}})
+	}
+	// SOAR webhook (ticket 26): the incident records of the audit stream, signed.
+	if url := os.Getenv("SOAR_WEBHOOK_URL"); url != "" {
+		secret, err := os.ReadFile(os.Getenv("SOAR_WEBHOOK_SECRET_FILE"))
+		if err != nil || len(bytes.TrimSpace(secret)) < 32 {
+			fail("SOAR_WEBHOOK_SECRET_FILE (at least 32 bytes)", err)
+		}
+		sinks = append(sinks, &siem.Filtered{Label: "soar", Keep: siem.SOARRecord,
+			Sink: &siem.HTTP{URL: url, Format: "json", Header: http.Header{}, Secret: bytes.TrimSpace(secret), Client: &http.Client{Timeout: 30 * time.Second}}})
 	}
 	if len(sinks) == 0 {
 		fail("no SIEM sink", errors.New("set SIEM_SYSLOG_ADDR and/or SIEM_HTTP_URL"))
