@@ -30,6 +30,7 @@ import (
 	"aisec/internal/posture"
 	"aisec/internal/privacy"
 	"aisec/internal/remediate"
+	"aisec/internal/riskcal"
 	"aisec/internal/server"
 	"aisec/internal/similarity"
 	"aisec/internal/tuning"
@@ -94,6 +95,12 @@ func main() {
 	policies, err := lifecycle.Open(ctx, db, os.Getenv("TENANT_ID"), policy.Files)
 	if err != nil {
 		fail("policy store", err)
+	}
+	// Risk weight calibration (ticket 25): the active version rides in every policy release, so it registers before
+	// any module that cuts releases (catalog seed, agent registry) runs.
+	riskWeights := &riskcal.Store{DB: db, Tenant: os.Getenv("TENANT_ID"), Policies: policies, FS: policy.Files}
+	if err := riskcal.Open(ctx, riskWeights); err != nil {
+		fail("riskcal schema", err)
 	}
 	// The app catalog joins every release (ticket 16): open it before the first bundle is built.
 	var feedKey []byte
@@ -282,10 +289,11 @@ func main() {
 		fail("tuning schema", err)
 	}
 	tuner := &tuning.Store{DB: db, Tenant: os.Getenv("TENANT_ID"), Pepper: []byte(os.Getenv("TENANT_PEPPER"))}
+	riskWeights.Source = search.Events
 	routes(rt, deps{bundles: bundles, scim: ids.SCIMHandler(scimHash, os.Getenv("PUBLIC_URL")), metrics: metrics, mcpGateway: registry.GatewayHandler(mcpHash, time.Now), incidents: incidents, identity: ids,
 		policies: policies, simulator: simulator, apps: apps, feedKey: feedKey,
 		posture: postureSrc, compliance: complianceStore, complianceSources: complianceSrc, register: register,
-		agents: registry, data: db, remediations: &remediate.Store{DB: db, Tenant: os.Getenv("TENANT_ID")}, corpus: confidential, tuning: tuner})
+		agents: registry, data: db, remediations: &remediate.Store{DB: db, Tenant: os.Getenv("TENANT_ID")}, corpus: confidential, tuning: tuner, risk: riskWeights})
 	server.Run("control-plane", rt.Mux)
 	cancel()
 	kc.Close()

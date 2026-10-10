@@ -16,6 +16,7 @@ import (
 	"aisec/internal/lifecycle"
 	"aisec/internal/posture"
 	"aisec/internal/remediate"
+	"aisec/internal/riskcal"
 	"aisec/internal/similarity"
 	"aisec/internal/tuning"
 )
@@ -40,6 +41,7 @@ type deps struct {
 	register               compliance.RegisterSources
 	corpus                 *similarity.Store // registered confidential documents (ticket 37)
 	tuning                 *tuning.Store     // per-tenant detector tuning (ticket 38)
+	risk                   *riskcal.Store    // risk weight calibration (ticket 25)
 }
 
 // routes is the complete admin API. Everything not listed as Public needs a permission (deny by default);
@@ -65,4 +67,5 @@ func routes(rt *authz.Router, d deps) {
 	compliance.Routes(rt, d.compliance, d.complianceSources, d.register, time.Now)
 	similarity.Routes(rt, d.corpus, time.Now)
 	tuning.Routes(rt, d.tuning, time.Now)
+	riskcal.Routes(rt, d.risk, time.Now)
 }
