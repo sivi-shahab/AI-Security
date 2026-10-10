@@ -45,6 +45,7 @@ type Event struct {
 	Classes       []Class  `json:"classes"`
 	ContentHash   string   `json:"content_hash"`
 	Snippet       string   `json:"snippet,omitempty"`
+	SourceApp     string   `json:"source_app,omitempty"` // internal app that called the AI gateway (ticket 13)
 
 	// PDP input metadata (no content), for replaying the decision in policy simulation. Pointers: absent ≠ zero.
 	PrincipalType       string   `json:"principal_type,omitempty"`

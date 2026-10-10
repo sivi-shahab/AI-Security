@@ -30,7 +30,8 @@
           "app_id": {"type": "string", "minLength": 1},
           "sanction": {"enum": ["sanctioned", "tolerated", "unsanctioned", "blocked", "under_review"], "description": "Apps missing from the catalog MUST be sent as unsanctioned."},
           "region": {"type": "string", "pattern": "^([A-Z]{2}|unknown)$", "description": "ISO 3166-1 alpha-2 of where content is processed; 'unknown' is treated as offshore (ADR-0001)."},
-          "trains_on_data": {"type": "boolean"}
+          "trains_on_data": {"type": "boolean"},
+          "ojk_approval_ref": {"type": "string", "minLength": 1, "description": "OJK approval for offshore processing (POJK 11/2022); PEPs usually leave it to the catalog (aisec.dest)."}
         }
       },
       "content": {

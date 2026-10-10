@@ -1,0 +1,1 @@
+{"id":"msg_01","type":"message","role":"assistant","model":"claude-sonnet-4-5","content":[{"type":"text","text":"1. Structuring deposits. 2. Rapid movement of funds. 3. Unusual cash deposits."}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":80,"output_tokens":25}}

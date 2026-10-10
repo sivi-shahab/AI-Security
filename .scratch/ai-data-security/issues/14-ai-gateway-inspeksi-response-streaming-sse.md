@@ -19,3 +19,6 @@ Mayoritas aplikasi chat memakai streaming, dan response bisa membocorkan data at
 - [ ] Test: NIK yang terpotong di 2 chunk tetap ter-redact.
 - [ ] Test: block di tengah stream → klien SDK menerima akhir stream yang valid.
 - [ ] Overhead per window p95 ≤ 20 ms.
+
+## Catatan dari tiket 13
+- `internal/aigw` saat ini menolak `stream: true` dengan 400 format provider. Inspeksi response non-streaming (`call.enforce` arah `response`) dan root teks per endpoint sudah ada untuk dipakai ulang per window.

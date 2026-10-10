@@ -236,6 +236,9 @@ func (s *Store) releaseDoc(ctx context.Context, tx pgx.Tx) (policysvc.Overrides,
 		if v.TrainsOnCustomerData != nil {
 			a["trains_on_data"] = *v.TrainsOnCustomerData
 		}
+		if v.OJKApprovalRef != nil {
+			a["ojk_approval_ref"] = *v.OJKApprovalRef // offshore processing approved by OJK (POJK 11/2022, ADR-0001)
+		}
 		apps[id] = a
 	}
 	return policysvc.Overrides{"aisec.catalog": map[string]any{"version": version, "apps": apps}}, nil

@@ -1,0 +1,1 @@
+{"candidates":[{"content":{"role":"model","parts":[{"text":"QRIS adalah standar kode QR pembayaran nasional dari Bank Indonesia."}]},"finishReason":"STOP","index":0}],"usageMetadata":{"promptTokenCount":12,"candidatesTokenCount":14,"totalTokenCount":26},"modelVersion":"gemini-2.5-flash"}

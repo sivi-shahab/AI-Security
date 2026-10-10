@@ -22,18 +22,16 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
-	"path"
 	"reflect"
 	"regexp"
-	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 
-	"aisec/internal/detect"
 	"aisec/internal/events"
+	"aisec/internal/inspect"
 	"aisec/internal/mcptools"
 	"aisec/internal/toolscope"
 )
@@ -418,7 +416,7 @@ func (c *call) toolCall(ctx context.Context, msg *message) ([]byte, *message) {
 		}
 	}
 
-	in := inspectable(args)
+	in := inspect.New(args, nil)
 	d, eid, err := c.decide(ctx, "tool_call", name, in, agent)
 	if err != nil {
 		m := rpcError(msg.ID, "policy unavailable", nil)
@@ -428,7 +426,7 @@ func (c *call) toolCall(ctx context.Context, msg *message) ([]byte, *message) {
 	case "allow", "warn":
 		return mustJSON(msg), nil
 	case "redact", "tokenize": // ponytail: tokenize redacts until the token vault (ticket 24)
-		in.redact(obligationClasses(d))
+		in.Redact(obligationClasses(d))
 		params["arguments"] = args
 		msg.Params = mustJSON(params)
 		return mustJSON(msg), nil
@@ -437,7 +435,7 @@ func (c *call) toolCall(ctx context.Context, msg *message) ([]byte, *message) {
 			break
 		}
 		// The approver sees the call with secrets and card data redacted; the raw arguments stay here.
-		in.redact([]string{"SECRET.*", "PCI.*"})
+		in.Redact([]string{"SECRET.*", "PCI.*"})
 		t, err := c.g.RequestApproval(ctx, ApprovalRequest{ApprovalKey: key, Preview: args, ReasonCodes: d.ReasonCodes, TraceID: c.trace})
 		if err != nil {
 			c.g.Log.Error("approval request", "err", err)
@@ -487,7 +485,7 @@ func (c *call) inspectPayload(ctx context.Context, b []byte, pend *pending) []by
 	default:
 		return b // initialize, tools/list, …: tool descriptions are ticket 29's
 	}
-	in := inspectable(obj)
+	in := inspect.New(obj, nil)
 	agent := map[string]any{"tool": tool}
 	if t := c.tools[tool]; t != nil {
 		agent["tool_risk"] = t.Risk
@@ -499,7 +497,7 @@ func (c *call) inspectPayload(ctx context.Context, b []byte, pend *pending) []by
 	case d.Action == "allow" || d.Action == "warn":
 		return b
 	case d.Action == "redact" || d.Action == "tokenize":
-		in.redact(obligationClasses(d))
+		in.Redact(obligationClasses(d))
 		*field = mustJSON(obj)
 		return mustJSON(msg)
 	}
@@ -515,62 +513,6 @@ func (c *call) inspectPayload(ctx context.Context, b []byte, pend *pending) []by
 
 // --- inspection ---
 
-// content is every string leaf of a JSON value, joined for one detector pass; set writes a leaf back in place.
-type content struct {
-	leaves []leaf
-	text   string
-	raw    []byte // canonical JSON (sorted keys), for the content hash
-	res    detect.Result
-}
-
-type leaf struct {
-	off int
-	s   string
-	set func(string)
-}
-
-func inspectable(v any) *content {
-	c := &content{raw: mustJSON(v)}
-	var b strings.Builder
-	var walk func(any)
-	add := func(s string, set func(string)) {
-		if b.Len() > 0 {
-			b.WriteString("\n\n") // no detector joins digits or words across a blank line
-		}
-		c.leaves = append(c.leaves, leaf{b.Len(), s, set})
-		b.WriteString(s)
-	}
-	walk = func(v any) {
-		switch x := v.(type) {
-		case map[string]any:
-			keys := make([]string, 0, len(x))
-			for k := range x {
-				keys = append(keys, k)
-			}
-			sort.Strings(keys)
-			for _, k := range keys {
-				if s, ok := x[k].(string); ok {
-					add(s, func(n string) { x[k] = n })
-				} else {
-					walk(x[k])
-				}
-			}
-		case []any:
-			for i, e := range x {
-				if s, ok := e.(string); ok {
-					add(s, func(n string) { x[i] = n })
-				} else {
-					walk(e)
-				}
-			}
-		}
-	}
-	walk(v)
-	c.text = b.String()
-	c.res = detect.Scan(c.text)
-	return c
-}
-
 // obligationClasses are the class globs of the decision's redact/tokenize obligations.
 func obligationClasses(d Decision) []string {
 	var globs []string
@@ -582,46 +524,19 @@ func obligationClasses(d Decision) []string {
 	return globs
 }
 
-// redact replaces the found classes matching globs (none = every class found) in place.
-func (c *content) redact(globs []string) {
-	want := func(typ string) bool {
-		if len(globs) == 0 {
-			return true
-		}
-		for _, g := range globs {
-			if ok, _ := path.Match(g, typ); ok {
-				return true
-			}
-		}
-		return false
-	}
-	for _, l := range c.leaves {
-		var ms []detect.Match
-		for _, m := range c.res.Matches {
-			if m.Span[0] >= l.off && m.Span[1] <= l.off+len(l.s) && want(m.Type) {
-				m.Span = [2]int{m.Span[0] - l.off, m.Span[1] - l.off}
-				ms = append(ms, m)
-			}
-		}
-		if len(ms) > 0 {
-			l.set(detect.Redact(l.s, ms))
-		}
-	}
-}
-
 // decide builds the canonical PDP input, asks the PDP, records the session taint and emits the decision event.
 // The event id doubles as the decision id the agent sees.
-func (c *call) decide(ctx context.Context, direction, tool string, in *content, agent map[string]any) (Decision, string, error) {
+func (c *call) decide(ctx context.Context, direction, tool string, in *inspect.Content, agent map[string]any) (Decision, string, error) {
 	g := c.g
 	taint := g.taintOf(c.taintKey)
-	g.addTaint(c.taintKey, in.res.Injection.Score)
+	g.addTaint(c.taintKey, in.Res.Injection.Score)
 	agent["agent_id"] = c.agentID
 	agent["hitl_available"] = g.RequestApproval != nil
 	agent["session_injection_max"] = taint
 	agent["chain_depth"] = c.depth
-	classes := make([]any, 0, len(in.res.Classes))
-	evClasses := make([]events.Class, 0, len(in.res.Classes))
-	for _, cl := range in.res.Classes {
+	classes := make([]any, 0, len(in.Res.Classes))
+	evClasses := make([]events.Class, 0, len(in.Res.Classes))
+	for _, cl := range in.Res.Classes {
 		classes = append(classes, map[string]any{"type": cl.Type, "count": cl.Count, "confidence": cl.Confidence})
 		evClasses = append(evClasses, events.Class{Type: cl.Type, Count: cl.Count, Confidence: cl.Confidence})
 	}
@@ -631,7 +546,7 @@ func (c *call) decide(ctx context.Context, direction, tool string, in *content, 
 		"direction":   direction,
 		"principal":   map[string]any{"type": "agent", "id": principal},
 		"destination": map[string]any{"app_id": c.srv.AppID, "sanction": c.srv.Sanction, "region": c.srv.Region},
-		"content":     map[string]any{"sensitivity": in.res.Sensitivity, "classes": classes, "injection_score": in.res.Injection.Score},
+		"content":     map[string]any{"sensitivity": in.Res.Sensitivity, "classes": classes, "injection_score": in.Res.Injection.Score},
 		"agent":       agent,
 	}
 	d, err := g.Decide(ctx, input)
@@ -640,14 +555,14 @@ func (c *call) decide(ctx context.Context, direction, tool string, in *content, 
 		return Decision{}, "", err
 	}
 	eid := uuid.NewString()
-	score, hitl := in.res.Injection.Score, false
+	score, hitl := in.Res.Injection.Score, false
 	e := events.Event{
 		EventID: eid, TenantID: g.TenantID, TS: g.Now().UTC().Format(time.RFC3339Nano), TraceID: c.trace,
 		Channel: "mcp_gateway", Direction: direction, PrincipalID: principal, AppID: c.srv.AppID, AgentID: c.agentID,
 		Action: d.Action, ReasonCodes: nonNil(d.ReasonCodes), MatchedRules: d.MatchedRules, PolicyVersion: d.PolicyVersion,
 		RiskScore: d.RiskScore, RiskOverrides: d.RiskOverrides, RiskVersion: d.RiskVersion, Classes: evClasses,
-		ContentHash: g.hmac(string(in.raw)), PrincipalType: "agent", Sanction: d.Destination.Sanction, Region: d.Destination.Region,
-		TrainsOnData: d.Destination.TrainsOnData, Sensitivity: in.res.Sensitivity, InjectionScore: &score, AgentTool: tool,
+		ContentHash: g.hmac(string(in.Raw)), PrincipalType: "agent", Sanction: d.Destination.Sanction, Region: d.Destination.Region,
+		TrainsOnData: d.Destination.TrainsOnData, Sensitivity: in.Res.Sensitivity, InjectionScore: &score, AgentTool: tool,
 		SessionInjectionMax: &taint, HITLAvailable: &hitl, ChainDepth: &c.depth,
 	}
 	if r, ok := agent["tool_risk"].(string); ok {

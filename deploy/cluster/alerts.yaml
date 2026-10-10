@@ -152,3 +152,24 @@ spec:
           labels: {severity: warning}
           annotations:
             summary: "{{ $value }} audit entries not yet exported to the SIEM for 15 minutes"
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: aisec-ai-gateway
+  namespace: aisec
+spec:
+  groups:
+    - name: ai-gateway
+      rules:
+        # Spec §13.3: a fail_open app reached a provider without a policy decision.
+        - alert: AIGatewayFailOpen
+          expr: sum by (app) (increase(aigw_fail_open_total[5m])) > 0
+          labels: {severity: critical, category: security}
+          annotations:
+            summary: "AI gateway forwarded {{ $value }} request(s)/response(s) of app {{ $labels.app }} without a policy decision"
+        - alert: AIGatewayFailClosed
+          expr: sum by (app) (increase(aigw_fail_closed_total[5m])) > 0
+          labels: {severity: warning}
+          annotations:
+            summary: "AI gateway refused traffic of app {{ $labels.app }}: the PDP is unavailable"

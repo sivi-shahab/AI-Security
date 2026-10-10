@@ -81,12 +81,21 @@ spec:
         - name: ai-gateway
           image: registry.local/aisec/ai-gateway:dev
           imagePullPolicy: Always
+          # KAFKA_BROKERS, SCHEMA_REGISTRY_URL, TENANT_ID, TENANT_PEPPER, REDIS_URL.
+          envFrom: [{secretRef: {name: ai-gateway}}]
+          env:
+            - {name: AIGW_CONFIG_FILE, value: /config/aigw.json}
           ports: [{containerPort: 8080, name: http}]
           readinessProbe: {httpGet: {path: /healthz, port: http}}
           livenessProbe: {httpGet: {path: /healthz, port: http}}
+          volumeMounts:
+            - {name: aigw-config, mountPath: /config, readOnly: true}
+            # Provider API keys, one file per provider (aigw.json key_file). Written by the Vault agent in
+            # production; the gateway re-reads a file when it changes, so rotation needs no restart.
+            - {name: provider-keys, mountPath: /vault/secrets, readOnly: true}
           resources:
-            requests: {cpu: 50m, memory: 64Mi}
-            limits: {cpu: 500m, memory: 256Mi}
+            requests: {cpu: 250m, memory: 128Mi}
+            limits: {cpu: "2", memory: 512Mi}
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -119,6 +128,8 @@ spec:
             readOnlyRootFilesystem: true
             capabilities: {drop: [ALL]}
       volumes:
+        - {name: aigw-config, configMap: {name: ai-gateway-config}}
+        - {name: provider-keys, secret: {secretName: ai-gateway-provider-keys}}
         - {name: opa-config, configMap: {name: opa-config}}
         # bundle.pub: public half of policy-bundle-signing, provisioned with it.
         - {name: bundle-pubkey, configMap: {name: policy-bundle-pubkey}}
