@@ -54,7 +54,7 @@ Ditolak:
 Keabsahan memproses data di provider tertentu adalah keputusan compliance per app. Platform menegakkan dan membuktikannya, tidak memutuskannya.
 
 ### U11: Single-tenant, tenant-aware (ASM-4 dikonfirmasi)
-Satu deployment untuk bank. `tenant_id` + RLS PostgreSQL di semua tabel dan HMAC per tenant tetap dipertahankan sebagai defense-in-depth. Fitur produk multi-tenant (onboarding tenant, billing, isolasi per-tenant di infrastruktur) tidak dibangun.
+Satu deployment untuk bank. `tenant_id` + RLS PostgreSQL di semua tabel dan HMAC per tenant tetap dipertahankan sebagai defense-in-depth. *(Diamandemen oleh ADR-0003: RLS pada tabel yang menyimpan data per tenant; data konfigurasi deployment diisolasi per database; audit log di luar RLS.)* Fitur produk multi-tenant (onboarding tenant, billing, isolasi per-tenant di infrastruktur) tidak dibangun.
 
 ## Pemicu review
 

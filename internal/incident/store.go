@@ -18,6 +18,7 @@ import (
 	"aisec/internal/audit"
 	"aisec/internal/authz"
 	"aisec/internal/events"
+	"aisec/internal/tenantdb"
 )
 
 //go:embed schema.sql
@@ -48,6 +49,15 @@ func Open(ctx context.Context, db *pgxpool.Pool, auditLog *audit.Store, kek []by
 	}
 	if _, err := db.Exec(ctx, schemaSQL); err != nil {
 		return nil, fmt.Errorf("apply incident schema: %w", err)
+	}
+	// Row level security (ticket 42): incidents and blocks by tenant_id, the rest through their incident.
+	if err := tenantdb.Isolate(ctx, db, "incident.incidents", "incident.blocks"); err != nil {
+		return nil, err
+	}
+	for _, t := range []string{"incident.incident_events", "incident.evidence", "incident.transitions", "incident.actions", "incident.tickets", "incident.unmask_requests"} {
+		if err := tenantdb.IsolateChild(ctx, db, t, "incident_id", "incident.incidents"); err != nil {
+			return nil, err
+		}
 	}
 	s := &Store{db: db, audit: auditLog, kek: kek}
 	s.Actions = map[string]Action{

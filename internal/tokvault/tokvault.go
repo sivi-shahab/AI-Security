@@ -25,6 +25,7 @@ import (
 
 	"aisec/internal/audit"
 	"aisec/internal/seal"
+	"aisec/internal/tenantdb"
 )
 
 //go:embed schema.sql
@@ -65,6 +66,9 @@ func Open(ctx context.Context, db *pgxpool.Pool, auditLog *audit.Store, tenant s
 	}
 	if _, err := db.Exec(ctx, schemaSQL); err != nil {
 		return nil, fmt.Errorf("apply tokvault schema: %w", err)
+	}
+	if err := tenantdb.Isolate(ctx, db, "tokvault.keys", "tokvault.tokens"); err != nil {
+		return nil, err
 	}
 	aad := []byte("tokvault:" + tenant)
 	fresh := make([]byte, 32)

@@ -26,6 +26,7 @@ import (
 	"aisec/internal/authz"
 	"aisec/internal/detect"
 	"aisec/internal/events"
+	"aisec/internal/tenantdb"
 )
 
 //go:embed schema.sql
@@ -58,7 +59,7 @@ func Open(ctx context.Context, db *pgxpool.Pool) error {
 	if _, err := db.Exec(ctx, schemaSQL); err != nil {
 		return fmt.Errorf("apply tuning schema: %w", err)
 	}
-	return nil
+	return tenantdb.Isolate(ctx, db, "tuning.optin", "tuning.labels", "tuning.models", "tuning.holdout")
 }
 
 func (s *Store) tx(ctx context.Context, actor, action string, target map[string]any, fn func(pgx.Tx) error) error {

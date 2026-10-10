@@ -8,12 +8,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-
 	"aisec/internal/detect"
 	"aisec/internal/privacy"
 	"aisec/internal/server"
 	"aisec/internal/similarity"
+	"aisec/internal/tenantdb"
 	"aisec/internal/tuning"
 )
 
@@ -67,7 +66,7 @@ func main() {
 	if url := os.Getenv("DATABASE_URL"); url != "" {
 		log := privacy.NewLogger("detection-svc")
 		ctx := context.Background()
-		db, err := pgxpool.New(ctx, url)
+		db, err := tenantdb.Pool(ctx, url, os.Getenv("TENANT_ID"))
 		if err == nil {
 			similar, err = similarity.Watch(ctx, db, os.Getenv("TENANT_ID"), []byte(os.Getenv("TENANT_PEPPER")), time.Minute, log)
 		}

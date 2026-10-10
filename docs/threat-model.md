@@ -75,7 +75,7 @@ Trust boundary:
 | T | Audit log diubah atau dihapus | High | ✅ Append-only, hash chain, anchor WORM, alert `AuditAnchorMissing` (tiket 07). |
 | R | Analis menyangkal telah membuka evidence | Medium | ✅ Audit ditulis sebelum plaintext ada; akses ditolak juga diaudit (`internal/incident/store.go` `Unmask`). |
 | I | **Abuse unmask evidence** | High | ✅ sebagian. Lihat §4.5. ❌ G6. |
-| I | **Tenant crossover** | Medium (single-tenant) | ✅ sebagian. Lihat §4.4. ❌ G3. |
+| I | **Tenant crossover** | Medium (single-tenant) | ✅ G3 (tiket 42, ADR-0003): RLS di-FORCE pada setiap tabel ber-`tenant_id` dan anaknya, tenant dipatok per koneksi (`internal/tenantdb`), diuji `TestRowLevelSecurity`. Lihat §4.4. |
 | D | Banjir request ke Admin API | Low | Ingress bank + autentikasi wajib. |
 | E | Role sendiri dinaikkan lewat SCIM atau Admin API | High | ✅ Binding role ke user/grup hanya oleh permission `identity.admin` dan diaudit (`internal/authz/roles.go`, `internal/identity`); permission sensitif butuh step-up + justifikasi. |
 
@@ -149,6 +149,8 @@ Trust boundary:
 **Kontrol:** filter `tenant_id` di query store (incident, tuning, similarity); HMAC dan feature hash dengan pepper per tenant; uji isolasi dua tenant (38).
 
 **Gap (G3):** ADR-0001 U11 menetapkan RLS PostgreSQL di semua tabel sebagai defense-in-depth, tetapi belum ada satu pun policy RLS. Isolasi saat ini hanya bergantung pada setiap query yang benar. `authz.Caller` juga tidak membawa tenant. Dampaknya rendah selama satu deployment = satu bank, tetapi deviasi dari ADR harus ditutup atau ADR diubah.
+
+**Status G3 (tiket 42):** ditutup oleh ADR-0003. RLS berlaku pada data per tenant; data konfigurasi deployment diisolasi per database; audit log di luar RLS (satu hash chain). Sisa: pemisahan role pemilik/migrasi dan role aplikasi.
 
 ### 4.5 Abuse unmask evidence (High)
 **Skenario:** analis SOC berhak `evidence.unmask` membuka evidence di luar kasusnya, misalnya prompt atasan, rekan kerja, atau data nasabah tertentu, secara massal atau berulang.

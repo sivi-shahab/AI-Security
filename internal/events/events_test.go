@@ -2,6 +2,7 @@ package events
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -136,4 +137,22 @@ func mustCompile(t *testing.T) *jsonschema.Schema {
 		t.Fatal(err)
 	}
 	return s
+}
+
+// Ticket 42: an event of another tenant never reaches the handlers (its rows would break row level security and
+// stall the consumer).
+func TestOnlyTenant(t *testing.T) {
+	var got []string
+	h := func(_ context.Context, e Event, _ []byte) error { got = append(got, e.TenantID); return nil }
+	hs := OnlyTenant("a", h, h)
+	for _, tenant := range []string{"a", "b", ""} {
+		for _, f := range hs {
+			if err := f(context.Background(), Event{TenantID: tenant}, nil); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if strings.Join(got, ",") != "a,a" {
+		t.Errorf("handled %v", got)
+	}
 }

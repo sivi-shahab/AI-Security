@@ -27,6 +27,7 @@ import (
 	"aisec/internal/incident"
 	"aisec/internal/lifecycle"
 	"aisec/internal/policysvc"
+	"aisec/internal/tenantdb"
 )
 
 //go:embed schema.sql
@@ -62,6 +63,9 @@ type Store struct {
 func Open(ctx context.Context, s *Store) error {
 	if _, err := s.DB.Exec(ctx, schemaSQL); err != nil {
 		return fmt.Errorf("apply riskcal schema: %w", err)
+	}
+	if err := tenantdb.Isolate(ctx, s.DB, "riskcal.versions"); err != nil {
+		return err
 	}
 	s.Policies.AddExtra(func(ctx context.Context, tx pgx.Tx) (policysvc.Overrides, error) {
 		var cfg map[string]any

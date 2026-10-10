@@ -11,7 +11,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/sr"
 
@@ -33,6 +32,7 @@ import (
 	"aisec/internal/riskcal"
 	"aisec/internal/server"
 	"aisec/internal/similarity"
+	"aisec/internal/tenantdb"
 	"aisec/internal/tuning"
 	"aisec/policy"
 )
@@ -66,7 +66,8 @@ func main() {
 	if err != nil {
 		fail("audit log", err)
 	}
-	db, err := pgxpool.New(ctx, os.Getenv("DATABASE_URL"))
+	// Pinned to the tenant: row level security shows this process only its tenant's rows (ticket 42).
+	db, err := tenantdb.Pool(ctx, os.Getenv("DATABASE_URL"), os.Getenv("TENANT_ID"))
 	if err != nil {
 		fail("database", err)
 	}
@@ -245,7 +246,8 @@ func main() {
 		fail("kafka client", err)
 	}
 	go func() {
-		if err := events.Consume(ctx, kc, &events.Decoder{SR: rc}, log, incidents.Handle, apps.Handle, registry.Handle); err != nil {
+		if err := events.Consume(ctx, kc, &events.Decoder{SR: rc}, log,
+			events.OnlyTenant(os.Getenv("TENANT_ID"), incidents.Handle, apps.Handle, registry.Handle)...); err != nil {
 			fail("decision event consumer stopped", err)
 		}
 	}()

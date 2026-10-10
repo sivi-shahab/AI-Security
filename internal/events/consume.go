@@ -50,3 +50,18 @@ func Consume(ctx context.Context, kc *kgo.Client, dec *Decoder, log *slog.Logger
 		}
 	}
 }
+
+// OnlyTenant drops events of other tenants before each handler: the database would refuse their rows (row level
+// security, ticket 42), and one forged record must not stop the consumer for good.
+func OnlyTenant(tenant string, hs ...Handler) []Handler {
+	out := make([]Handler, len(hs))
+	for i, h := range hs {
+		out[i] = func(ctx context.Context, e Event, payload []byte) error {
+			if e.TenantID != tenant {
+				return nil
+			}
+			return h(ctx, e, payload)
+		}
+	}
+	return out
+}

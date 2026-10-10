@@ -22,6 +22,7 @@ import (
 	"aisec/internal/audit"
 	"aisec/internal/authz"
 	"aisec/internal/extract"
+	"aisec/internal/tenantdb"
 )
 
 //go:embed schema.sql
@@ -46,7 +47,7 @@ func Open(ctx context.Context, db *pgxpool.Pool) error {
 	if _, err := db.Exec(ctx, schemaSQL); err != nil {
 		return fmt.Errorf("apply similarity schema: %w", err)
 	}
-	return nil
+	return tenantdb.Isolate(ctx, db, "similarity.docs")
 }
 
 // Register extracts the text of a file, fingerprints it and stores the fingerprints. The text is dropped.

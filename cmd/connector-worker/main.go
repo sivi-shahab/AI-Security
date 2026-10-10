@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 
@@ -26,6 +25,7 @@ import (
 	"aisec/internal/remediate"
 	"aisec/internal/server"
 	"aisec/internal/similarity"
+	"aisec/internal/tenantdb"
 )
 
 // Env (each source is on when its variables are set; at least one):
@@ -67,7 +67,7 @@ func main() {
 		}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	db, err := pgxpool.New(ctx, env("DATABASE_URL"))
+	db, err := tenantdb.Pool(ctx, env("DATABASE_URL"), env("TENANT_ID"))
 	if err != nil {
 		fail("database", err)
 	}

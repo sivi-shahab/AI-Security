@@ -9,11 +9,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-
 	"aisec/internal/audit"
 	"aisec/internal/privacy"
 	"aisec/internal/server"
+	"aisec/internal/tenantdb"
 	"aisec/internal/tokvault"
 )
 
@@ -32,7 +31,7 @@ func main() {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
 	defer stop()
-	db, err := pgxpool.New(ctx, os.Getenv("DATABASE_URL"))
+	db, err := tenantdb.Pool(ctx, os.Getenv("DATABASE_URL"), os.Getenv("TENANT_ID"))
 	if err != nil {
 		fail("database", err)
 	}
