@@ -31,7 +31,7 @@ Chaos tiket 21: saat broker Kafka dimatikan, **semua** request lewat AI gateway,
 
 ## Hasil verifikasi lokal (2026-10-10)
 - `go build`, `go vet`, golangci-lint v2.5.0 0 issue. `go test -race` untuk `events`, `aigw`, `mcpgw` hijau, dan `ingest` (Kafka + OpenSearch) hijau.
-- Chaos penuh di harness tiket 21: semua skenario sama seperti sebelumnya, kecuali Kafka yang kini hijau. Redis mati menunjukkan variasi besar, dengan 503 di 2 dari 5 run kode baru dan tidak ada di 4 run kode lama. Ini dicatat di tiket 48; kaitannya dengan perubahan ini belum bisa dipastikan atau dikesampingkan.
+- Chaos penuh di harness tiket 21: semua skenario sama seperti sebelumnya, kecuali Kafka yang kini hijau. Redis mati menunjukkan variasi besar, dengan 503 di 2 dari 5 run kode baru dan tidak ada di 4 run kode lama. Tiket 48 kemudian menemukan bahwa harness yang baru start memberi 503 bahkan tanpa gangguan apa pun (OPA/JVM dingin), jadi 503 itu hampir pasti bukan akibat perubahan ini.
 
 ## Sisa
 - MCP gateway tidak punya skenario chaos di harness. Perilakunya mengikuti producer yang sama dan diuji di unit test.

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -56,12 +57,25 @@ func main() {
 	}
 	defer producer.Close()
 	count := aigw.MemoryCounter(time.Now)
+	metrics := producer.WriteMetrics
 	if u := os.Getenv("REDIS_URL"); u != "" {
 		opt, err := redis.ParseURL(u)
 		if err != nil {
 			fail("REDIS_URL", err)
 		}
-		count = aigw.RedisCounter(redis.NewClient(opt))
+		// Redis answers in about a millisecond; a counter must never cost the request more than this (ticket 48).
+		// The URL's own dial_timeout/read_timeout/max_retries win.
+		for _, t := range []*time.Duration{&opt.DialTimeout, &opt.ReadTimeout, &opt.WriteTimeout, &opt.PoolTimeout} {
+			if *t == 0 {
+				*t = 50 * time.Millisecond
+			}
+		}
+		if opt.MaxRetries == 0 {
+			opt.MaxRetries = -1
+		}
+		d := &aigw.Degraded{Primary: aigw.RedisCounter(redis.NewClient(opt)), Local: count, Cooldown: 5 * time.Second, Now: time.Now, Log: log}
+		count = d.Count
+		metrics = func(w io.Writer) { producer.WriteMetrics(w); d.WriteMetrics(w) }
 	}
 	var vault *tokvault.Client
 	if u := os.Getenv("VAULT_URLS"); u != "" {
@@ -74,7 +88,7 @@ func main() {
 	opa := &mcpgw.OPA{URL: opaURL, HTTP: &http.Client{Timeout: 2 * time.Second}}
 	gw := &aigw.Gateway{
 		Apps: cfg.Apps, Providers: providers, Decide: opa.Decide, Key: (&aigw.KeyFiles{}).Key, Count: count, Vault: vault,
-		Emit:     func(_ context.Context, e events.Event) error { return producer.Publish(e) }, Metrics: producer.WriteMetrics,
+		Emit: func(_ context.Context, e events.Event) error { return producer.Publish(e) }, Metrics: metrics,
 		// Models take their time: bound the wait for response headers, generously.
 		Upstream: &http.Client{Transport: &http.Transport{Proxy: http.ProxyFromEnvironment, ResponseHeaderTimeout: 120 * time.Second}},
 		Pepper:   []byte(os.Getenv("TENANT_PEPPER")), TenantID: os.Getenv("TENANT_ID"), Now: time.Now, Log: log,

@@ -19,6 +19,11 @@ up)
   until curl -fsS localhost:18080/healthz >/dev/null 2>&1; do sleep 2; done
   sleep 5; curl -fsS localhost:18080/healthz >/dev/null
   docker compose up -d --force-recreate --no-deps opa
+  # Warm up before anything is measured: right after start, cold OPA/JVMs give multi-second tails and even 503s
+  # with no fault injected (ticket 48).
+  until [ "$(curl -s -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer nfr-app-key' -H 'Content-Type: application/json' \
+    -d '{"model":"m","messages":[{"role":"user","content":"halo"}]}' localhost:18080/openai/v1/chat/completions)" = 200 ]; do sleep 1; done
+  ./.bin/nfr load -url http://localhost:18080/openai/v1/chat/completions -key nfr-app-key -rps 30 -d 15s -tokens 500 -label warmup >/dev/null
   # The decision topic is created by the platform team in production (3 partitions, as internal/ingest's test);
   # without it every decision event is dropped (decision_events_dropped_total).
   until docker exec t21-kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --if-not-exists \

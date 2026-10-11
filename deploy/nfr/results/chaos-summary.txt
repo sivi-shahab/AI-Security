@@ -1,13 +1,13 @@
-baseline closed: codes={"200":599} rps=29.95 p95_ms=40.004 p99_ms=131.491
-baseline open:   codes={"200":599} rps=29.95 p95_ms=41.829 p99_ms=86.543
+baseline closed: codes={"200":599} rps=29.95 p95_ms=18.804 p99_ms=21.905
+baseline open:   codes={"200":599} rps=29.95 p95_ms=19.082 p99_ms=23.086
 opa down closed: codes={"503":899} rps=0 p95_ms=0 p99_ms=0
-opa down open:   codes={"200":899} rps=29.966666666666665 p95_ms=8.555 p99_ms=9.933  fail_open_total +1798
-opa back closed: codes={"200":449} rps=29.933333333333334 p95_ms=24.479 p99_ms=35.281
+opa down open:   codes={"200":899} rps=29.966666666666665 p95_ms=7.91 p99_ms=8.633  fail_open_total +1798
+opa back closed: codes={"200":449} rps=29.933333333333334 p95_ms=18.832 p99_ms=21.743
 opa restarted without policy service: serving after 1 s; 0 disk-load log line(s)
-opa cached closed: codes={"200":449} rps=29.933333333333334 p95_ms=19.916 p99_ms=24.014
-kafka down closed: codes={"200":899} rps=29.966666666666665 p95_ms=20.213 p99_ms=25.173
-kafka down open:   codes={"200":899} rps=29.966666666666665 p95_ms=20.847 p99_ms=25.42
-kafka back closed: codes={"200":449} rps=29.933333333333334 p95_ms=23.606 p99_ms=33.662  decision_events_dropped_total +3592
-redis down closed: codes={"200":736,"503":163} rps=24.533333333333335 p95_ms=3270.667 p99_ms=5213.172  counter errors logged: 7010
-redis back closed: codes={"200":449} rps=29.933333333333334 p95_ms=21.046 p99_ms=27.67
-detection-svc down closed: codes={"200":899} rps=29.966666666666665 p95_ms=21.763 p99_ms=37.083
+opa cached closed: codes={"200":447,"503":2} rps=29.8 p95_ms=1239.019 p99_ms=2013.058
+kafka down closed: codes={"200":899} rps=29.966666666666665 p95_ms=24.985 p99_ms=33.548
+kafka down open:   codes={"200":899} rps=29.966666666666665 p95_ms=24.402 p99_ms=30.584
+kafka back closed: codes={"200":449} rps=29.933333333333334 p95_ms=26.316 p99_ms=35.216  decision_events_dropped_total +3592
+redis down closed: codes={"200":899} rps=29.966666666666665 p95_ms=98.854 p99_ms=223.969  counter errors logged: 6
+redis back closed: codes={"200":449} rps=29.933333333333334 p95_ms=932.389 p99_ms=1244.426
+detection-svc down closed: codes={"200":898,"503":1} rps=29.933333333333334 p95_ms=1089.91 p99_ms=1643.243

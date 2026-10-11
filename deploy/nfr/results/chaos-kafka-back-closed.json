@@ -1,1 +1,1 @@
-{"label":"kafka-back-closed","requests":449,"codes":{"200":449},"achieved_rps":29.933333333333334,"P50":14.577,"P95":23.606,"P99":33.662,"Max":44.79}
+{"label":"kafka-back-closed","requests":449,"codes":{"200":449},"achieved_rps":29.933333333333334,"P50":15.937,"P95":26.316,"P99":35.216,"Max":46.822}

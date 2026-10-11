@@ -1,1 +1,1 @@
-{"label":"opa-down-open","requests":899,"codes":{"200":899},"achieved_rps":29.966666666666665,"P50":6.794,"P95":8.555,"P99":9.933,"Max":34.278}
+{"label":"opa-down-open","requests":899,"codes":{"200":899},"achieved_rps":29.966666666666665,"P50":6.442,"P95":7.91,"P99":8.633,"Max":12.323}

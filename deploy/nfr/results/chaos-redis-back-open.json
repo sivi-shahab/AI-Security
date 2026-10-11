@@ -1,1 +1,1 @@
-{"label":"redis-back-open","requests":449,"codes":{"200":449},"achieved_rps":29.933333333333334,"P50":15.441,"P95":21.983,"P99":27.039,"Max":38.647}
+{"label":"redis-back-open","requests":449,"codes":{"200":449},"achieved_rps":29.933333333333334,"P50":20.551,"P95":958.788,"P99":1485.371,"Max":1825.644}
