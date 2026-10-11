@@ -8,9 +8,14 @@ package system.log
 
 import rego.v1
 
+# Once per decision, not once per field walked (ticket 47: the inline set was ~1 ms of every decision).
+forbidden_lower := {lower(f) | some f in data.system.log.forbidden}
+
 mask contains ptr if {
 	walk(input.input, [path, _])
 	count(path) > 0
-	lower(sprintf("%v", [path[count(path) - 1]])) in {lower(f) | some f in data.system.log.forbidden}
+	key := path[count(path) - 1]
+	is_string(key) # array indices are never field names
+	lower(key) in forbidden_lower
 	ptr := concat("/", array.concat(["", "input"], [sprintf("%v", [p]) | some p in path]))
 }

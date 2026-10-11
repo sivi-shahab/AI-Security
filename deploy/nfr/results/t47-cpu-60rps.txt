@@ -1,0 +1,4 @@
+Ticket 47, 60 RPS for 60 s, 1K tokens, gateway 2 + OPA 2 vCPU, decision logs on (docker stats mean)
+before (e1b3f3b): opa 91%  gateway 50%
+after, schema+optimize: opa 81%  gateway 51%
+after, + mask fix:      opa 66%  gateway 49%

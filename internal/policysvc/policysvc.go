@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"path"
@@ -18,7 +19,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/open-policy-agent/opa/v1/ast"
 	"github.com/open-policy-agent/opa/v1/bundle"
+	"github.com/open-policy-agent/opa/v1/compile"
 	"github.com/open-policy-agent/opa/v1/rego"
 	"github.com/open-policy-agent/opa/v1/storage/inmem"
 
@@ -84,7 +87,8 @@ func load(fsys fs.FS, overrides Overrides) (source, error) {
 	ov, _ := json.Marshal(overrides) // map keys are sorted: stable
 	forbidden := privacy.Forbidden()
 	setPath(src.data, []string{"system", "log", "forbidden"}, forbidden)
-	_, _ = fmt.Fprintf(h, "overrides\x00%s\x00forbidden\x00%v", ov, forbidden)
+	// optimized=1: a change in how the bundle is built must change the revision too, or sidecars keep the old one.
+	_, _ = fmt.Fprintf(h, "overrides\x00%s\x00forbidden\x00%v\x00optimized=1", ov, forbidden)
 	src.revision = hex.EncodeToString(h.Sum(nil))[:16]
 	return src, nil
 }
@@ -108,16 +112,43 @@ func Build(ctx context.Context, fsys fs.FS, signer Signer, overrides Overrides) 
 	if err := Validate(ctx, src); err != nil {
 		return nil, "", err
 	}
-	b := bundle.Bundle{Data: src.data, Modules: src.modules}
-	b.Manifest = bundle.Manifest{Revision: src.revision, Roots: &[]string{"aisec", "system"}}
-	if err := signer.sign(&b); err != nil {
+	b, err := optimize(ctx, &bundle.Bundle{Data: src.data, Modules: src.modules,
+		Manifest: bundle.Manifest{Roots: &[]string{"aisec", "system"}}})
+	if err != nil {
+		return nil, "", err
+	}
+	b.Manifest.Revision = src.revision
+	if err := signer.sign(b); err != nil {
 		return nil, "", fmt.Errorf("sign bundle: %w", err)
 	}
 	var buf bytes.Buffer
-	if err := bundle.NewWriter(&buf).Write(b); err != nil {
+	if err := bundle.NewWriter(&buf).Write(*b); err != nil {
 		return nil, "", err
 	}
 	return buf.Bytes(), src.revision, nil
+}
+
+// Entrypoint is the decision the gateways ask for on the hot path (mcpgw.OPA.Decide).
+const Entrypoint = "aisec/decision/checked"
+
+// optimize partially evaluates Entrypoint against the bundle's data, as opa build -O=1 (ticket 47): the rule set
+// is known when the bundle is built, so the loop over it is unrolled. About 17% of a decision on 1 vCPU. Every
+// other rule (result, the MCP queries, kills) stays as written; TestOptimizedBundleDecidesAsSource holds the two
+// together.
+func optimize(ctx context.Context, b *bundle.Bundle) (*bundle.Bundle, error) {
+	for i, m := range b.Modules {
+		parsed, err := ast.ParseModuleWithOpts(m.Path, string(m.Raw), ast.ParserOptions{RegoVersion: ast.RegoV1})
+		if err != nil {
+			return nil, err
+		}
+		b.Modules[i].Parsed = parsed
+	}
+	c := compile.New().WithTarget(compile.TargetRego).WithOptimizationLevel(1).WithEntrypoints(Entrypoint).
+		WithBundle(b).WithOutput(io.Discard)
+	if err := c.Build(ctx); err != nil {
+		return nil, fmt.Errorf("optimize bundle: %w", err)
+	}
+	return c.Bundle(), nil
 }
 
 // Validate fails on any decision rule_errors or risk config_errors: a typo must never become a rule that silently

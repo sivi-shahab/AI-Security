@@ -1,18 +1,32 @@
-│ samples                                         │      280 │
-│ ns/op                                           │  4226047 │
-│ histogram_timer_rego_query_eval_ns_90%          │  6797002 │
-│ histogram_timer_rego_query_eval_ns_95%          │  7921655 │
-│ histogram_timer_rego_query_eval_ns_99%          │ 14498543 │
-│ histogram_timer_rego_query_eval_ns_max          │ 28057472 │
-│ histogram_timer_rego_query_eval_ns_median       │  3193324 │
+│ samples                                         │     586 │
+│ ns/op                                           │ 1850436 │
+│ histogram_timer_rego_query_eval_ns_90%          │ 2034117 │
+│ histogram_timer_rego_query_eval_ns_95%          │ 2259210 │
+│ histogram_timer_rego_query_eval_ns_99%          │ 4406565 │
+│ histogram_timer_rego_query_eval_ns_max          │ 6252269 │
+│ histogram_timer_rego_query_eval_ns_median       │ 1667447 │
+│ samples                                         │      590 │
+│ ns/op                                           │  1880077 │
+│ histogram_timer_rego_query_eval_ns_90%          │  2110203 │
+│ histogram_timer_rego_query_eval_ns_95%          │  2322811 │
+│ histogram_timer_rego_query_eval_ns_99%          │  3832300 │
+│ histogram_timer_rego_query_eval_ns_max          │ 10246792 │
+│ histogram_timer_rego_query_eval_ns_median       │  1696212 │
+│ samples                                         │     628 │
+│ ns/op                                           │ 1868498 │
+│ histogram_timer_rego_query_eval_ns_90%          │ 2087772 │
+│ histogram_timer_rego_query_eval_ns_95%          │ 2378610 │
+│ histogram_timer_rego_query_eval_ns_99%          │ 4185356 │
+│ histogram_timer_rego_query_eval_ns_max          │ 7708599 │
+│ histogram_timer_rego_query_eval_ns_median       │ 1680506 │
 --- profile (top expressions by time)
-│ 2.170117ms │ 4        │ 4        │ 4            │ /aisec/decision.rego:27  │
-│ 1.407007ms │ 155      │ 135      │ 5            │ /aisec/decision.rego:64  │
-│ 909.359µs  │ 26       │ 26       │ 26           │ /aisec/risk/risk.rego:58 │
-│ 886.179µs  │ 63       │ 97       │ 3            │ /aisec/decision.rego:63  │
-│ 720.147µs  │ 22       │ 2        │ 2            │ /aisec/decision.rego:150 │
-│ 535.409µs  │ 1        │ 21       │ 1            │ /aisec/decision.rego:62  │
-│ 493.944µs  │ 20       │ 20       │ 4            │ /aisec/decision.rego:143 │
-│ 427.272µs  │ 13       │ 1        │ 1            │ /aisec/cond/cond.rego:12 │
-│ 354.037µs  │ 1        │ 0        │ 1            │ /aisec/risk/risk.rego:77 │
-│ 235.761µs  │ 22       │ 22       │ 2            │ /aisec/decision.rego:144 │
+│ 970.604µs │ 26       │ 26       │ 26           │ /aisec/risk/risk.rego:49           │
+│ 312.036µs │ 7        │ 7        │ 7            │ /aisec/risk/risk.rego:16           │
+│ 306.421µs │ 2        │ 2        │ 1            │ /optimized/aisec/decision.rego:194 │
+│ 266.078µs │ 13       │ 1        │ 1            │ /aisec/cond/cond.rego:7            │
+│ 265.618µs │ 22       │ 22       │ 2            │ /aisec/decision.rego:61            │
+│ 193.44µs  │ 11       │ 2        │ 1            │ /aisec/decision.rego:57            │
+│ 134.612µs │ 20       │ 19       │ 5            │ /aisec/risk/risk.rego:30           │
+│ 133.286µs │ 3        │ 3        │ 1            │ /optimized/aisec/decision.rego:255 │
+│ 110.993µs │ 18       │ 5        │ 2            │ /aisec/decision.rego:68            │
+│ 109.239µs │ 12       │ 12       │ 3            │ /aisec/decision.rego:65            │

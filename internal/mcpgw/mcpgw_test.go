@@ -270,7 +270,7 @@ func (e *env) setPins(items map[string]any) {
 		overrides["aisec.kills"] = e.kills
 	}
 	qs := map[string]rego.PreparedEvalQuery{}
-	for path, q := range map[string]string{"aisec/decision/result": "data.aisec.decision.result", "aisec/mcp/agent": "data.aisec.mcp.agent",
+	for path, q := range map[string]string{"aisec/decision/result": "data.aisec.decision.result", "aisec/decision/checked": "data.aisec.decision.checked", "aisec/mcp/agent": "data.aisec.mcp.agent",
 		"aisec/mcp/tools": "data.aisec.mcp.tools", "aisec/kills": "data.aisec.kills"} {
 		pq, err := policysvc.Query(context.Background(), policy.Files, overrides, q)
 		if err != nil {

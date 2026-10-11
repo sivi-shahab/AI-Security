@@ -133,6 +133,11 @@ spec:
         - name: opa
           image: registry.local/aisec/opa:dev
           imagePullPolicy: Always
+          # Ticket 47: fewer GC cycles keep the p99 of a decision under 5 ms on 1 vCPU; the soft memory limit makes
+          # the GC work harder again before the 256Mi container limit.
+          env:
+            - {name: GOGC, value: "800"}
+            - {name: GOMEMLIMIT, value: 200MiB}
           args:
             - run
             - --server
@@ -154,7 +159,9 @@ spec:
             - {name: spiffe, mountPath: /spiffe, readOnly: true}  # client certificate for /bundles (ticket 40)
           resources:
             requests: {cpu: 100m, memory: 64Mi}
-            limits: {cpu: "1", memory: 256Mi}
+            # Ticket 47: decisions (2 per request) plus masked decision logs cost OPA slightly more CPU than the
+            # gateway itself; 2 + 2 vCPU stays within the overhead target up to ~125 RPS per pod.
+            limits: {cpu: "2", memory: 256Mi}
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

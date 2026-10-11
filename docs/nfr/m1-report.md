@@ -7,7 +7,7 @@ Tanggal: 2026-10-10, commit dasar `f0befa5`. Harness dan data mentah: `deploy/nf
 ## 1. Lingkungan dan metode
 
 - **Host:** 1 mesin, 16 vCPU, 15 GB RAM, Linux 5.15 (WSL2), Docker Compose v2.29. Tanpa cluster Kubernetes, tanpa mTLS (harness memakai flag dev yang sudah disediakan service: `KAFKA_PLAINTEXT`, `OPENSEARCH_PLAINTEXT`, `MTLS_INSECURE` untuk detection-svc). Satu-satunya beban berat di host selama pengukuran (load average < 1 sebelum mulai).
-- **Topologi (`deploy/nfr/compose.yaml`):** image service dibangun dari repo (`build/go.Dockerfile`). Satu "pod" = ai-gateway (3 vCPU) + sidecar OPA 1.21.1 (1 vCPU) dalam satu network namespace, total 4 vCPU sesuai §13.1. OPA mengambil bundle **bertanda tangan** (dibangun dengan `policysvc.Build` dari policy bawaan) dengan verifikasi signature dan `persist: true` seperti `deploy/base/opa/opa.yaml`. Pendukung: Kafka 3.9 (KRaft), karapace, Redis 8, OpenSearch 2.19.3, event-ingest, detection-svc, dan mock provider OpenAI-compatible (`deploy/nfr/nfr mock`) yang menjawab seketika.
+- **Topologi (`deploy/nfr/compose.yaml`):** image service dibangun dari repo (`build/go.Dockerfile`). Satu "pod" = ai-gateway (3 vCPU) + sidecar OPA 1.21.1 (1 vCPU); sejak tiket 47, 2 + 2 vCPU dan decision log aktif seperti produksi dalam satu network namespace, total 4 vCPU sesuai §13.1. OPA mengambil bundle **bertanda tangan** (dibangun dengan `policysvc.Build` dari policy bawaan) dengan verifikasi signature dan `persist: true` seperti `deploy/base/opa/opa.yaml`. Pendukung: Kafka 3.9 (KRaft), karapace, Redis 8, OpenSearch 2.19.3, event-ingest, detection-svc, dan mock provider OpenAI-compatible (`deploy/nfr/nfr mock`) yang menjawab seketika.
 - **Overhead** = latensi beban yang sama lewat gateway dikurangi langsung ke mock (load generator open-loop `deploy/nfr/nfr load`, prompt teks kantor biasa tanpa temuan detektor, 1K dan 8K token).
 - **Model L2 tidak ikut.** Artefak model tiket 09/10 tidak ada di repo, dan, lebih penting, tidak ada PEP yang memanggil detection-svc (lihat temuan T5). Angka di bawah adalah jalur produksi saat ini: L1 in-process + OPA.
 - **Reproduksi:** `deploy/nfr/run.sh up`, lalu `measure.sh`, `opa-bench.sh`, `chaos.sh`, `DURATION=24h soak.sh`, `dr.sh`, `timing-tests.sh`. `run.sh down` membersihkan.
@@ -18,10 +18,10 @@ Tanggal: 2026-10-10, commit dasar `f0befa5`. Harness dan data mentah: `deploy/nf
 |---|---|---|---|
 | Overhead gateway, teks ≤ 8K token | p95 ≤ 80 ms, p99 ≤ 200 ms | 20 RPS: 1K tok p95 **+19,6 ms**, p99 +22,5 ms; 8K tok p95 **+22,2 ms**, p99 +24,9 ms. 60 RPS: p95 24,9 ms, p99 29,3 ms total. 80 RPS: p99 171 ms. 100 RPS: runtuh (65% 503) | ✅ sampai kapasitas pod; lihat throughput |
 | Overhead per chunk streaming | p95 ≤ 20 ms per window | 20 chunk × 5 ms, 20 RPS: total p95 141,5 vs 123,8 ms langsung = +17,7 ms per jawaban (termasuk keputusan akhir), ≤ 0,9 ms per chunk | ✅ (perkiraan per chunk, bukan per window internal) |
-| OPA eval (sidecar) | p99 ≤ 5 ms (`opa bench`) | 1 vCPU: median 3,2 ms, p95 7,8 ms, **p99 9,0 ms**, max 22 ms | ❌ → tiket 47 |
+| OPA eval (sidecar) | p99 ≤ 5 ms (`opa bench`) | 1 vCPU: median 3,2 ms, p95 7,8 ms, **p99 9,0 ms**, max 22 ms. Setelah tiket 47 (`decision.checked`, bundle `-O=1`, `GOGC=800`): median 1,67 ms, **p99 3,8–4,4 ms** (3 run, `results/opa-bench.txt`) | ✅ setelah tiket 47 |
 | File scan sync ≤ 5 MB | p95 ≤ 2 s | zip CSV 5,1 MB: p95 **0,38 s** (extract + L1, 4 vCPU) | ✅* hanya 2 MiB teks pertama diperiksa → tiket 50; format via Tika tidak diukur |
 | File scan async ≤ 50 MB | p95 ≤ 60 s | zip CSV 49 MB: p95 **0,37 s** | ✅* sama: angka ini rendah *karena* pemotongan → tiket 50 |
-| Throughput gateway per pod (4 vCPU) | ≥ 300 RPS | Pembagian manifest (gateway 3 + OPA 1): sehat **60 RPS**, menurun di 80, runtuh di 100 (OPA 106% CPU, gateway 59%). OPA 3 + gateway 1: sehat **100 RPS**, maksimum ≈ 225 RPS dengan p95 1,5 s | ❌ → tiket 47 |
+| Throughput gateway per pod (4 vCPU) | ≥ 300 RPS | Pembagian manifest (gateway 3 + OPA 1): sehat **60 RPS**, menurun di 80, runtuh di 100 (OPA 106% CPU, gateway 59%). OPA 3 + gateway 1: sehat **100 RPS**, maksimum ≈ 225 RPS dengan p95 1,5 s. Semua itu **tanpa** decision log OPA, yang di produksi aktif. Setelah tiket 47, dengan decision log, gateway 2 + OPA 2: dalam target sampai **125 RPS** (p95 61 ms, p99 180 ms), 150 RPS sedikit di atas (p99 332 ms), runtuh di 175 (`results/t47-*`) | ❌ → tiket 47 (butuh keputusan) |
 | Propagasi publish/rollback ke semua PEP | ≤ 60 s p99 | `TestPropagation` (2 replika control-plane, OPA nyata, 22 release): p50 0,18 s, **p99 15,2 s** | ✅ |
 | Kill switch efektif | ≤ 10 s | `TestKillSwitchPropagation`: maks 0,19 s ke OPA, **1,19 s** end-to-end dengan poll gateway 1 s; `mcpgw TestKillSwitch`: sesi terputus 0,99 s | ✅ |
 | Event ke dashboard/SIEM | ≤ 60 s p95 | gateway → Kafka → event-ingest → OpenSearch (bisa dicari): 200/200, p50 2,6 s, **p95 4,8 s**, maks 5,1 s | ✅ dashboard; jalur siem-export tidak diukur di harness |
@@ -73,8 +73,8 @@ Catatan:
 
 | # | Deviasi | Penanganan |
 |---|---|---|
-| T1 | OPA eval p99 9,0 ms > 5 ms | tiket **47** |
-| T2 | Throughput per pod 60–100 RPS < 300 RPS | tiket **47** |
+| T1 | OPA eval p99 9,0 ms > 5 ms | tiket **47**, selesai |
+| T2 | Throughput per pod 60–100 RPS < 300 RPS | tiket **47**: naik ke 125 RPS, 300 belum (butuh keputusan) |
 | T3 | Kafka mati → gateway berhenti melayani | tiket **46** (P0, M1), selesai |
 | T4 | Redis mati → p95 416 ms | tiket **48**, selesai |
 | T5 | L2/detection-svc tidak di jalur PEP; timeout 150 ms §13.3 tidak ada | tiket **49** |
@@ -96,7 +96,7 @@ Catatan:
   - Puncak 20 RPS: 1 pod cukup; **2 pod** (manifest `replicas: 2`) untuk HA, headroom 3× per pod.
   - 100×: ⌈2.000 / 60⌉ = 34 pod + N+1 ≈ **35–36 pod (≈ 144 vCPU)**.
   - Dengan target tiket 47 (300 RPS/pod): 7 + 1 pod (32 vCPU).
-  - Pembagian vCPU sidecar/gateway di manifest (`deploy/base/services.yaml`: gateway limit 2, OPA 1) **lebih kecil** dari pod uji (3 + 1). Tetapkan ulang setelah tiket 47. Hasil uji menunjukkan OPA yang jenuh lebih dulu.
+  - Setelah tiket 47 (125 RPS/pod, gateway 2 + OPA 2 vCPU seperti manifest, decision log aktif): 100× = ⌈2.000 / 125⌉ = 16 pod + N+1 ≈ **17 pod (68 vCPU)**.
 - **Event:**
   - ~2 decision event per request (request + response) = ~200.000 event/hari (2,3/s rata-rata, ~40/s puncak). Untuk Kafka (3 partisi) dan event-ingest ini kecil: harness memproses ratusan per detik tanpa lag.
   - OpenSearch: 321 byte/dokumen primer terukur (326.331 dokumen, 104,9 MB) = ~64 MB/hari primer, ~128 MB/hari dengan 1 replika, ~11,5 GB untuk 90 hari hot.

@@ -43,9 +43,12 @@ result := {
 	"risk_version": data.aisec.risk.config.version,
 } if not valid_input
 
-result := {
+# The gateways validate their input in Go against this same schema, compiled once, and ask for checked; any input
+# that fails there comes to result instead (mcpgw.OPA.Decide, ticket 47). json.match_schema compiles the schema on
+# every call, about 40% of a decision. Every other caller asks for result, which validates here.
+checked := {
 	"action": action,
-	"obligations": sort_objects(obligations),
+	"obligations": sort(obligations),
 	"reason_codes": sort({r.reason | some r in enforced}),
 	"matched_rules": sort({r.id | some r in enforced}),
 	"monitor_rules": sort({r.id | some r in monitored}),
@@ -56,7 +59,9 @@ result := {
 	"risk_score": risk.score,
 	"risk_overrides": risk.applied,
 	"risk_version": data.aisec.risk.config.version,
-} if valid_input
+}
+
+result := checked if valid_input
 
 matched contains rule if {
 	some rule in data.aisec.rules.items
@@ -112,7 +117,7 @@ in_scope("agent_id", v) if input.agent.agent_id == v
 
 monitored contains r if {
 	some r in matched
-	r.mode == "monitor"
+	object.get(r, "mode", "enforce") == "monitor"
 }
 
 top := max({rank[r.action] | some r in enforced} | {0})
@@ -126,8 +131,6 @@ obligations contains o if {
 	some r in enforced
 	some o in object.get(r, "obligations", [])
 }
-
-sort_objects(s) := [o | some k in sort([json.marshal(x) | some x in s]); o := json.unmarshal(k)]
 
 # risk_score is computed by aisec.risk, never supplied by the PEP.
 value("risk_score") := risk.score

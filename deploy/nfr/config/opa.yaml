@@ -17,3 +17,7 @@ keys:
   aisec-policy-a:
     algorithm: ES256
 persistence_directory: /var/opa
+# As deploy/base/opa/opa.yaml: every decision is masked and logged, part of the cost per decision (ticket 47).
+decision_logs:
+  console: true
+  mask_decision: /system/log/mask

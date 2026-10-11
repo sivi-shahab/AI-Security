@@ -20,7 +20,7 @@ services:
     container_name: t21-ai-gateway
     image: t21-ai-gateway
     restart: on-failure
-    cpus: 3
+    cpus: 2  # with opa's 2: one 4 vCPU pod, split as deploy/base (ticket 47)
     ports: ["18080:8080"]
     volumes: ["./config:/config:ro"]
     environment:
@@ -38,8 +38,9 @@ services:
     image: openpolicyagent/opa:1.21.1-static
     restart: on-failure
     network_mode: "service:ai-gateway"
+    environment: {GOGC: "800", GOMEMLIMIT: 200MiB}  # as deploy/base (ticket 47)
     user: "0:0"  # harness only: the named volume is root-owned (k8s mounts an emptyDir writable by 65532)
-    cpus: 1
+    cpus: 2
     volumes: ["./config:/config:ro", "./.bundle:/keys:ro", "opa-cache:/var/opa"]
     command: [run, --server, --addr=127.0.0.1:8181, --diagnostic-addr=:8282, --config-file=/config/opa.yaml,
       "--set-file=keys.aisec-policy-a.key=/keys/aisec-policy-a.pub", --optimize-store-for-read-speed]

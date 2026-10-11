@@ -16,6 +16,10 @@ import (
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/santhosh-tekuri/jsonschema/v6"
+
+	"aisec/internal/events"
+	"aisec/policy"
 )
 
 // --- access tokens (MCP authorization: OAuth 2.1 bearer tokens, RFC 8707 audience) ---
@@ -226,16 +230,55 @@ func (o *OPA) Agent(ctx context.Context, identity string) (*RegistryAgent, error
 	return a, o.query(ctx, "aisec/mcp/agent", map[string]any{"identity": identity}, &a)
 }
 
+// inputSchema is the PDP input schema from the policy this binary was built with, compiled once.
+var inputSchema = sync.OnceValues(func() (*jsonschema.Schema, error) {
+	b, err := policy.Files.ReadFile("aisec/schema/data.json")
+	if err != nil {
+		return nil, err
+	}
+	var doc struct {
+		Input json.RawMessage `json:"input"`
+	}
+	if err := json.Unmarshal(b, &doc); err != nil {
+		return nil, err
+	}
+	return events.Compile(string(doc.Input))
+})
+
 // Decide evaluates the canonical input. An undefined decision is an error: the caller fails closed.
+// A valid input skips the PDP's own schema check (decision.checked, ticket 47); anything else goes to
+// decision.result, which checks it and answers the fail-closed INPUT_SCHEMA_INVALID block.
 func (o *OPA) Decide(ctx context.Context, input map[string]any) (Decision, error) {
+	path := "aisec/decision/result"
+	if validInput(input) {
+		path = "aisec/decision/checked"
+	}
 	var d *Decision
-	if err := o.query(ctx, "aisec/decision/result", input, &d); err != nil {
+	if err := o.query(ctx, path, input, &d); err != nil {
 		return Decision{}, err
+	}
+	if d == nil && path != "aisec/decision/result" { // a bundle older than checked, during a rollout
+		if err := o.query(ctx, "aisec/decision/result", input, &d); err != nil {
+			return Decision{}, err
+		}
 	}
 	if d == nil || d.Action == "" {
 		return Decision{}, errors.New("PDP returned no decision")
 	}
 	return *d, nil
+}
+
+func validInput(input map[string]any) bool {
+	schema, err := inputSchema()
+	if err != nil {
+		return false // the PDP checks
+	}
+	b, err := json.Marshal(input)
+	if err != nil {
+		return false
+	}
+	v, err := jsonschema.UnmarshalJSON(bytes.NewReader(b))
+	return err == nil && schema.Validate(v) == nil
 }
 
 func (o *OPA) query(ctx context.Context, path string, input any, out any) error {

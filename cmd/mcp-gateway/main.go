@@ -86,7 +86,7 @@ func main() {
 		Verify: verify, Exchange: sts.Exchange, Agent: opa.Agent, Decide: opa.Decide, Pins: opa.Pins,
 		Observe: registry.Observe, Claim: registry.Claim, RequestApproval: registry.RequestApproval,
 		Kills: opa.Kills, Purge: sts.Purge,
-		Emit:     func(_ context.Context, e events.Event) error { return producer.Publish(e) },
+		Emit: func(_ context.Context, e events.Event) error { return producer.Publish(e) },
 		// SSE streams stay open as long as the tool server keeps them: bound the wait for headers, not the body.
 		Upstream: &http.Client{Transport: &http.Transport{Proxy: http.ProxyFromEnvironment, ResponseHeaderTimeout: 30 * time.Second}},
 		Pepper:   []byte(os.Getenv("TENANT_PEPPER")), TenantID: os.Getenv("TENANT_ID"), DefaultRate: rate,
