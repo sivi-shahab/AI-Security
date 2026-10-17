@@ -78,7 +78,23 @@ type Event struct {
 	MemoryWrite         *bool    `json:"memory_write,omitempty"`    // FR-AGT-9 provenance of memory writes
 	ContentOrigin       string   `json:"content_origin,omitempty"`  // user | tool_result
 	ContentSources      []string `json:"content_sources,omitempty"` // server/tool outputs the session read before
+	L2                  *L2      `json:"l2,omitempty"`              // the L2 model's report, shadow mode (ticket 49)
 }
+
+// L2 is what the L2 model said about the content: classes and a score, never text or offsets.
+type L2 struct {
+	Model          string   `json:"model,omitempty"`
+	Mode           string   `json:"mode"`   // shadow | enforce
+	Status         string   `json:"status"` // ok | timeout | error | skipped | unavailable
+	LatencyMS      float64  `json:"latency_ms"`
+	Classes        []Class  `json:"classes,omitempty"`
+	InjectionScore *float64 `json:"injection_score,omitempty"`
+}
+
+// ClassType reports whether t is a class type the schema accepts (e.g. PII_ID.NIK).
+func ClassType(t string) bool { return classType.MatchString(t) }
+
+var classType = regexp.MustCompile(`^(PII_ID|FIN|PCI|PHI|SECRET|CODE|LEGAL_HR|CUSTOM)\.[A-Z0-9_]+$`)
 
 // PDPInput rebuilds the canonical PDP input (policy/aisec/schema) from the event's metadata. ok is false when the
 // event lacks what every decision needs (sensitivity, sanction, region): such events cannot be replayed.

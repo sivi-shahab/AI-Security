@@ -54,7 +54,10 @@
         "memory_write": {"type": "boolean"},
         "content_origin": {"type": "keyword"},
         "content_sources": {"type": "keyword"},
-        "snippet": {"type": "text"}
+        "snippet": {"type": "text"},
+        "l2": {"properties": {"model": {"type": "keyword"}, "mode": {"type": "keyword"}, "status": {"type": "keyword"},
+          "latency_ms": {"type": "float"}, "injection_score": {"type": "float"},
+          "classes": {"properties": {"type": {"type": "keyword"}, "count": {"type": "integer"}, "confidence": {"type": "float"}}}}}
       }
     }
   }

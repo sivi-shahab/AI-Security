@@ -67,6 +67,17 @@
     "memory_write": {"type": "boolean", "description": "The tool call writes agent memory or a vector store (FR-AGT-9)."},
     "content_origin": {"enum": ["user", "tool_result"], "description": "Provenance of a memory write: only the agent's own input this session, or tool output it read."},
     "content_sources": {"type": "array", "items": {"type": "string", "minLength": 1}, "description": "server/tool (or server/resources/read) outputs the session read before a memory write."},
-    "snippet": {"type": "string", "maxLength": 200, "description": "Already redacted by the PEP, e.g. 'NIK [REDACTED:PII_ID.NIK]'."}
+    "snippet": {"type": "string", "maxLength": 200, "description": "Already redacted by the PEP, e.g. 'NIK [REDACTED:PII_ID.NIK]'."},
+    "l2": {"type": "object", "additionalProperties": false, "required": ["mode", "status"],
+      "description": "What the L2 model said about this content (tickets 09-10, 49): in shadow mode a report beside the L1 result for the spec 9.4 release gate. Classes and a score, never text or offsets.",
+      "properties": {
+        "model": {"type": "string"},
+        "mode": {"enum": ["shadow", "enforce"]},
+        "status": {"enum": ["ok", "timeout", "error", "skipped", "unavailable"]},
+        "latency_ms": {"type": "number", "minimum": 0},
+        "classes": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["type", "count"], "properties": {
+          "type": {"type": "string", "pattern": "^(PII_ID|FIN|PCI|PHI|SECRET|CODE|LEGAL_HR|CUSTOM)\\.[A-Z0-9_]+$"}, "count": {"type": "integer", "minimum": 1},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1}}}},
+        "injection_score": {"type": "number", "minimum": 0, "maximum": 1}}}
   }
 }

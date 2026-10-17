@@ -22,7 +22,9 @@ import (
 // Env: AIGW_CONFIG_FILE (aigw.Config: apps with gateway key hashes and limits, providers with vault key files),
 // OPA_URL (default http://127.0.0.1:8181, the sidecar), KAFKA_* (events.KafkaOpts), SCHEMA_REGISTRY_URL, TENANT_ID,
 // TENANT_PEPPER, REDIS_URL (rate limits and token quotas shared across replicas; without it, per replica),
-// VAULT_URLS (comma-separated token-vault URLs, tried in order; without it, tokenize redacts) and VAULT_TOKEN.
+// VAULT_URLS (comma-separated token-vault URLs, tried in order; without it, tokenize redacts) and VAULT_TOKEN,
+// DETECTION_URL (detection-svc over mTLS from MTLS_DIR: the L2 shadow report in decision events, ticket 49; without
+// it, none) and DETECTION_TIMEOUT (Go duration, default 150ms, spec §13.3).
 func main() {
 	log := privacy.NewLogger("ai-gateway")
 	fail := func(msg string, err error) {
@@ -86,12 +88,24 @@ func main() {
 		opaURL = "http://127.0.0.1:8181"
 	}
 	opa := &mcpgw.OPA{URL: opaURL, HTTP: &http.Client{Timeout: 2 * time.Second}}
+	var detection *aigw.Detection
+	if u := os.Getenv("DETECTION_URL"); u != "" {
+		hc, err := server.MTLSClient(0, "spiffe://aisec.bank/ns/aisec/sa/detection-svc")
+		if err != nil {
+			fail("detection-svc client", err)
+		}
+		detection = &aigw.Detection{URL: u, HTTP: hc, Timeout: 150 * time.Millisecond}
+		if d, err := time.ParseDuration(os.Getenv("DETECTION_TIMEOUT")); err == nil && d > 0 {
+			detection.Timeout = d
+		}
+	}
 	gw := &aigw.Gateway{
 		Apps: cfg.Apps, Providers: providers, Decide: opa.Decide, Key: (&aigw.KeyFiles{}).Key, Count: count, Vault: vault,
 		Emit: func(_ context.Context, e events.Event) error { return producer.Publish(e) }, Metrics: metrics,
 		// Models take their time: bound the wait for response headers, generously.
 		Upstream: &http.Client{Transport: &http.Transport{Proxy: http.ProxyFromEnvironment, ResponseHeaderTimeout: 120 * time.Second}},
 		Pepper:   []byte(os.Getenv("TENANT_PEPPER")), TenantID: os.Getenv("TENANT_ID"), Now: time.Now, Log: log,
+		Detection: detection,
 	}
 	mux := http.NewServeMux()
 	gw.Routes(mux)

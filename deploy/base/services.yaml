@@ -109,6 +109,9 @@ spec:
           env:
             - {name: AIGW_CONFIG_FILE, value: /config/aigw.json}
             - {name: VAULT_URLS, value: http://token-vault}
+            # L2 shadow report in decision events (ticket 49): after the decision, at most 150 ms, never on the request path.
+            - {name: DETECTION_URL, value: https://detection-svc:8443}
+            - {name: MTLS_DIR, value: /spiffe}
             # Event bus (ticket 41): TLS + SASL/SCRAM as ai-gateway; files from Secret ai-gateway-bus (out of band).
             - {name: KAFKA_SASL_USER, value: ai-gateway}
             - {name: KAFKA_SASL_PASSWORD_FILE, value: /bus/kafka-password}
@@ -122,6 +125,7 @@ spec:
             # production; the gateway re-reads a file when it changes, so rotation needs no restart.
             - {name: provider-keys, mountPath: /vault/secrets, readOnly: true}
             - {name: bus, mountPath: /bus, readOnly: true}
+            - {name: spiffe, mountPath: /spiffe, readOnly: true}  # client certificate for detection-svc (ticket 40)
           resources:
             requests: {cpu: 250m, memory: 128Mi}
             limits: {cpu: "2", memory: 512Mi}

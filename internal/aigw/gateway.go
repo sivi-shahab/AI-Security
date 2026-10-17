@@ -51,6 +51,7 @@ type Gateway struct {
 	Now       func() time.Time
 	Log       *slog.Logger
 	Metrics   func(io.Writer) // more counters for /metrics (the event producer's)
+	Detection *Detection      // L2 shadow report in decision events (ticket 49); nil = none
 
 	mu      sync.Mutex
 	metrics map[[2]string]int64 // {name, app} → count
@@ -354,6 +355,17 @@ func (c *call) recordAs(ctx context.Context, id, direction string, sc scan, d mc
 	}
 	if sc.hash != "" {
 		e.ContentHash, e.Snippet = sc.hash, sc.snippet
+	}
+	if g.Detection != nil && sc.text != "" {
+		// After the decision and off the request path: the event waits for L2, the app does not (ticket 49).
+		go func() {
+			e.L2 = g.Detection.Shadow(context.WithoutCancel(ctx), sc.text, direction, c.p.AppID)
+			if e.L2.Status != "ok" && e.L2.Status != "skipped" {
+				g.count("detection_fallback_total", c.app.ID)
+			}
+			c.emit(context.WithoutCancel(ctx), e)
+		}()
+		return e.EventID
 	}
 	c.emit(ctx, e)
 	return e.EventID
