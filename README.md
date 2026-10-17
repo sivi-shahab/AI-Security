@@ -5,8 +5,9 @@ AI agents. Every channel (prompts, file uploads, responses, agent tool calls, da
 discovered, classified, risk-scored, and put under one policy.
 
 Full spec: [`.scratch/ai-data-security/spec.md`](.scratch/ai-data-security/spec.md) (Indonesian). Interactive
-architecture diagram (open in a browser: search, focus, route probe, Live trace):
-[`.archify/architecture-aisec-platform-20261017-131936/aisec-platform.html`](.archify/architecture-aisec-platform-20261017-131936/aisec-platform.html).
+architecture diagram, live at <https://sivi-shahab.github.io/AI-Secuirity/> (search, focus, route probe, Live
+trace; deployed from `.archify/` by `.github/workflows/pages.yml`):
+[`.archify/architecture-aisec-platform-20261017-133119/aisec-platform.html`](.archify/architecture-aisec-platform-20261017-133119/aisec-platform.html).
 
 ## Architecture
 
