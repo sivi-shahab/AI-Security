@@ -1,0 +1,757 @@
+{
+ "schema_version": 1,
+ "diagram_type": "architecture",
+ "meta": {
+  "title": "Arsitektur Platform AI-SPM (aisec)",
+  "output": ".archify/architecture-aisec-platform-20261017-131936/aisec-platform.html",
+  "quality_profile": "showcase",
+  "repository": {
+   "url": "https://github.com/sivi-shahab/AI-Secuirity.git",
+   "link_mode": "local-only",
+   "revision": "6a18a1771bbe8a3ea22a2e74accfeac6fe5d208b"
+  },
+  "animation": "trace"
+ },
+ "components": [
+  {
+   "id": "llm",
+   "type": "external",
+   "label": "Provider LLM",
+   "sublabel": "OpenAI, Anthropic, Gemini…",
+   "pos": [
+    298,
+    90
+   ],
+   "size": [
+    160,
+    62
+   ],
+   "sources": [
+    {
+     "path": "internal/aigw/providers.go",
+     "line": 1,
+     "label": "adapter provider"
+    }
+   ]
+  },
+  {
+   "id": "app",
+   "type": "external",
+   "label": "Karyawan & aplikasi",
+   "sublabel": "API key gateway",
+   "pos": [
+    28,
+    230
+   ],
+   "size": [
+    160,
+    62
+   ]
+  },
+  {
+   "id": "aigw",
+   "type": "security",
+   "label": "AI Gateway",
+   "sublabel": "L1 + L2 shadow, redact",
+   "pos": [
+    298,
+    230
+   ],
+   "size": [
+    160,
+    62
+   ],
+   "tag": "PEP",
+   "sources": [
+    {
+     "path": "internal/aigw/gateway.go",
+     "line": 78,
+     "label": "ServeHTTP"
+    },
+    {
+     "path": "cmd/ai-gateway/main.go",
+     "line": 25
+    }
+   ]
+  },
+  {
+   "id": "tokvault",
+   "type": "security",
+   "label": "Token Vault",
+   "sublabel": "FF1 tokenize/detokenize",
+   "pos": [
+    548,
+    230
+   ],
+   "size": [
+    160,
+    62
+   ],
+   "sources": [
+    {
+     "path": "cmd/token-vault/main.go",
+     "line": 21
+    },
+    {
+     "path": "cmd/ai-gateway/main.go",
+     "line": 66,
+     "label": "klien vault"
+    }
+   ]
+  },
+  {
+   "id": "opa",
+   "type": "security",
+   "label": "OPA sidecar",
+   "sublabel": "bundle bertanda tangan",
+   "pos": [
+    298,
+    370
+   ],
+   "size": [
+    160,
+    62
+   ],
+   "tag": "PDP",
+   "sources": [
+    {
+     "path": "cmd/ai-gateway/main.go",
+     "line": 74,
+     "label": "OPA_URL"
+    },
+    {
+     "path": "policy/aisec/decision.rego",
+     "line": 1
+    }
+   ]
+  },
+  {
+   "id": "agent",
+   "type": "external",
+   "label": "Agent AI",
+   "sublabel": "klien MCP",
+   "pos": [
+    28,
+    510
+   ],
+   "size": [
+    160,
+    62
+   ]
+  },
+  {
+   "id": "mcpgw",
+   "type": "security",
+   "label": "MCP Gateway",
+   "sublabel": "scope, HITL, kill switch",
+   "pos": [
+    298,
+    510
+   ],
+   "size": [
+    160,
+    62
+   ],
+   "tag": "PEP",
+   "sources": [
+    {
+     "path": "internal/mcpgw/gateway.go",
+     "line": 1
+    },
+    {
+     "path": "cmd/mcp-gateway/main.go",
+     "line": 24
+    }
+   ]
+  },
+  {
+   "id": "tools",
+   "type": "external",
+   "label": "Tool server MCP",
+   "sublabel": "upstream terdaftar",
+   "pos": [
+    298,
+    650
+   ],
+   "size": [
+    160,
+    62
+   ],
+   "sources": [
+    {
+     "path": "internal/mcpgw/gateway.go",
+     "line": 43,
+     "label": "Upstream"
+    }
+   ]
+  },
+  {
+   "id": "kafka",
+   "type": "messagebus",
+   "label": "Kafka",
+   "sublabel": "decision_event, TLS+SASL+ACL",
+   "pos": [
+    548,
+    370
+   ],
+   "size": [
+    170,
+    62
+   ],
+   "sources": [
+    {
+     "path": "internal/events/kafka.go",
+     "line": 1
+    },
+    {
+     "path": "cmd/ai-gateway/main.go",
+     "line": 53,
+     "label": "producer"
+    }
+   ]
+  },
+  {
+   "id": "ingest",
+   "type": "backend",
+   "label": "event-ingest",
+   "sublabel": "konsumen → indeks",
+   "pos": [
+    768,
+    230
+   ],
+   "size": [
+    160,
+    62
+   ],
+   "sources": [
+    {
+     "path": "cmd/event-ingest/main.go",
+     "line": 21
+    },
+    {
+     "path": "internal/ingest/ingest.go",
+     "line": 91,
+     "label": "Bulk"
+    }
+   ]
+  },
+  {
+   "id": "opensearch",
+   "type": "database",
+   "label": "OpenSearch",
+   "sublabel": "investigasi & posture",
+   "pos": [
+    1028,
+    230
+   ],
+   "size": [
+    150,
+    62
+   ],
+   "sources": [
+    {
+     "path": "internal/ingest/opensearch.go",
+     "line": 116
+    }
+   ]
+  },
+  {
+   "id": "siemexp",
+   "type": "backend",
+   "label": "siem-export",
+   "sublabel": "event + audit tail",
+   "pos": [
+    768,
+    370
+   ],
+   "size": [
+    160,
+    62
+   ],
+   "sources": [
+    {
+     "path": "cmd/siem-export/main.go",
+     "line": 32
+    },
+    {
+     "path": "cmd/siem-export/main.go",
+     "line": 99,
+     "label": "AuditTail"
+    }
+   ]
+  },
+  {
+   "id": "siem",
+   "type": "external",
+   "label": "SIEM / SOAR",
+   "sublabel": "CEF, HEC, webhook HMAC",
+   "pos": [
+    1028,
+    370
+   ],
+   "size": [
+    150,
+    62
+   ],
+   "sources": [
+    {
+     "path": "cmd/siem-export/main.go",
+     "line": 43
+    },
+    {
+     "path": "cmd/siem-export/main.go",
+     "line": 70,
+     "label": "SOAR"
+    }
+   ]
+  },
+  {
+   "id": "cp",
+   "type": "backend",
+   "label": "control-plane",
+   "sublabel": "policy, insiden, katalog, agent",
+   "pos": [
+    768,
+    510
+   ],
+   "size": [
+    170,
+    62
+   ],
+   "sources": [
+    {
+     "path": "cmd/control-plane/main.go",
+     "line": 46
+    },
+    {
+     "path": "cmd/control-plane/main.go",
+     "line": 249,
+     "label": "konsumen event"
+    },
+    {
+     "path": "cmd/control-plane/main.go",
+     "line": 323,
+     "label": "RunMTLS"
+    }
+   ]
+  },
+  {
+   "id": "itsm",
+   "type": "external",
+   "label": "ITSM",
+   "sublabel": "ServiceNow / Jira SM",
+   "pos": [
+    1028,
+    650
+   ],
+   "size": [
+    150,
+    62
+   ],
+   "sources": [
+    {
+     "path": "internal/incident/contain.go",
+     "line": 276
+    },
+    {
+     "path": "internal/incident/contain.go",
+     "line": 304
+    }
+   ]
+  },
+  {
+   "id": "soc",
+   "type": "frontend",
+   "label": "SOC / DPO / admin",
+   "sublabel": "OIDC + step-up",
+   "pos": [
+    1028,
+    510
+   ],
+   "size": [
+    150,
+    62
+   ],
+   "sources": [
+    {
+     "path": "cmd/control-plane/main.go",
+     "line": 180,
+     "label": "OIDC verifier"
+    }
+   ]
+  },
+  {
+   "id": "pg",
+   "type": "database",
+   "label": "PostgreSQL",
+   "sublabel": "RLS per tenant, audit chain",
+   "pos": [
+    548,
+    650
+   ],
+   "size": [
+    170,
+    62
+   ],
+   "sources": [
+    {
+     "path": "internal/tenantdb/tenantdb.go",
+     "line": 18,
+     "label": "app.tenant_id"
+    },
+    {
+     "path": "cmd/control-plane/main.go",
+     "line": 70
+    }
+   ]
+  },
+  {
+   "id": "worm",
+   "type": "cloud",
+   "label": "Object storage WORM",
+   "sublabel": "anchor audit harian",
+   "pos": [
+    768,
+    790
+   ],
+   "size": [
+    170,
+    62
+   ],
+   "sources": [
+    {
+     "path": "internal/audit/anchor.go",
+     "line": 85
+    },
+    {
+     "path": "cmd/control-plane/main.go",
+     "line": 49,
+     "label": "audit anchor"
+    }
+   ]
+  },
+  {
+   "id": "connector",
+   "type": "backend",
+   "label": "connector-worker",
+   "sublabel": "scan data-at-rest",
+   "pos": [
+    548,
+    790
+   ],
+   "size": [
+    170,
+    62
+   ],
+   "sources": [
+    {
+     "path": "cmd/connector-worker/main.go",
+     "line": 48
+    },
+    {
+     "path": "cmd/connector-worker/main.go",
+     "line": 107,
+     "label": "datascan"
+    }
+   ]
+  },
+  {
+   "id": "saas",
+   "type": "external",
+   "label": "M365 / Google Drive / S3",
+   "sublabel": "sumber data",
+   "pos": [
+    278,
+    790
+   ],
+   "size": [
+    180,
+    62
+   ],
+   "sources": [
+    {
+     "path": "cmd/connector-worker/main.go",
+     "line": 35
+    }
+   ]
+  },
+  {
+   "id": "det",
+   "type": "backend",
+   "label": "detection-svc",
+   "sublabel": "POST /scan/text (mTLS)",
+   "pos": [
+    28,
+    930
+   ],
+   "size": [
+    170,
+    62
+   ],
+   "sources": [
+    {
+     "path": "cmd/detection-svc/main.go",
+     "line": 116
+    },
+    {
+     "path": "cmd/detection-svc/main.go",
+     "line": 74,
+     "label": "klien L2"
+    },
+    {
+     "path": "internal/aigw/detection.go",
+     "line": 30,
+     "label": "Shadow (klien gateway)"
+    }
+   ]
+  },
+  {
+   "id": "mi",
+   "type": "backend",
+   "label": "model-inference",
+   "sublabel": "L2 NER + injeksi, ONNX int8",
+   "pos": [
+    298,
+    930
+   ],
+   "size": [
+    190,
+    62
+   ],
+   "sources": [
+    {
+     "path": "services/model-inference/app.py",
+     "line": 50
+    },
+    {
+     "path": "services/model-inference/app.py",
+     "line": 125
+    }
+   ]
+  },
+  {
+   "id": "redis",
+   "type": "database",
+   "label": "Redis",
+   "sublabel": "rate limit & kuota token",
+   "pos": [
+    548,
+    90
+   ],
+   "size": [
+    160,
+    62
+   ],
+   "sources": [
+    {
+     "path": "cmd/ai-gateway/main.go",
+     "line": 63,
+     "label": "REDIS_URL"
+    },
+    {
+     "path": "internal/aigw/limit.go",
+     "line": 60,
+     "label": "Degraded: fallback per replika"
+    }
+   ]
+  }
+ ],
+ "boundaries": [
+  {
+   "kind": "region",
+   "label": "DC/DRC bank · Kubernetes namespace aisec (NetworkPolicy default-deny)",
+   "wraps": [
+    "aigw",
+    "tokvault",
+    "opa",
+    "mcpgw",
+    "kafka",
+    "ingest",
+    "opensearch",
+    "siemexp",
+    "cp",
+    "pg",
+    "worm",
+    "connector",
+    "det",
+    "mi",
+    "redis"
+   ],
+   "pad": 18
+  },
+  {
+   "kind": "security-group",
+   "label": "Data plane: PEP inline",
+   "wraps": [
+    "aigw",
+    "tokvault",
+    "opa",
+    "mcpgw",
+    "redis"
+   ],
+   "pad": 12
+  }
+ ],
+ "connections": [
+  {
+   "from": "app",
+   "to": "aigw",
+   "label": "HTTPS + key app",
+   "variant": "emphasis"
+  },
+  {
+   "from": "aigw",
+   "to": "llm",
+   "label": "prompt ter-inspeksi",
+   "variant": "emphasis"
+  },
+  {
+   "from": "aigw",
+   "to": "tokvault",
+   "label": "tokenize"
+  },
+  {
+   "from": "aigw",
+   "to": "opa",
+   "label": "keputusan",
+   "variant": "security"
+  },
+  {
+   "from": "agent",
+   "to": "mcpgw",
+   "label": "tools/call",
+   "variant": "emphasis"
+  },
+  {
+   "from": "mcpgw",
+   "to": "opa",
+   "label": "keputusan",
+   "variant": "security"
+  },
+  {
+   "from": "mcpgw",
+   "to": "tools",
+   "label": "diteruskan bila diizinkan",
+   "variant": "emphasis"
+  },
+  {
+   "from": "aigw",
+   "to": "kafka",
+   "label": "decision event (async)",
+   "variant": "dashed"
+  },
+  {
+   "from": "mcpgw",
+   "to": "kafka",
+   "label": "decision event",
+   "variant": "dashed"
+  },
+  {
+   "from": "kafka",
+   "to": "ingest",
+   "variant": "dashed"
+  },
+  {
+   "from": "ingest",
+   "to": "opensearch",
+   "label": "bulk"
+  },
+  {
+   "from": "kafka",
+   "to": "siemexp",
+   "variant": "dashed"
+  },
+  {
+   "from": "siemexp",
+   "to": "siem",
+   "label": "TLS / HMAC"
+  },
+  {
+   "from": "kafka",
+   "to": "cp",
+   "label": "insiden, katalog, agent",
+   "variant": "dashed"
+  },
+  {
+   "from": "cp",
+   "to": "itsm",
+   "label": "tiket containment"
+  },
+  {
+   "from": "soc",
+   "to": "cp",
+   "label": "admin API"
+  },
+  {
+   "from": "cp",
+   "to": "pg",
+   "label": "SQL (RLS)"
+  },
+  {
+   "from": "cp",
+   "to": "worm",
+   "label": "anchor audit"
+  },
+  {
+   "from": "cp",
+   "to": "opa",
+   "label": "bundle via mTLS",
+   "variant": "security"
+  },
+  {
+   "from": "connector",
+   "to": "saas",
+   "label": "baca & remediasi"
+  },
+  {
+   "from": "connector",
+   "to": "pg",
+   "label": "temuan"
+  },
+  {
+   "from": "det",
+   "to": "mi",
+   "label": "L2 via mTLS",
+   "variant": "security"
+  },
+  {
+   "from": "aigw",
+   "to": "redis",
+   "label": "kuota"
+  },
+  {
+   "from": "aigw",
+   "to": "det",
+   "label": "L2 shadow via mTLS"
+  }
+ ],
+ "cards": [
+  {
+   "dot": "cyan",
+   "title": "Jalur utama",
+   "items": [
+    "Prompt karyawan dan tool call agent diinspeksi PEP lalu diputuskan OPA sebelum keluar",
+    "Setiap keputusan menjadi decision event di Kafka",
+    "control-plane memotong release policy bertanda tangan untuk semua sidecar"
+   ]
+  },
+  {
+   "dot": "amber",
+   "title": "Batas yang masih terbuka",
+   "items": [
+    "Gateway mengirim teks ke detection-svc untuk laporan L2 mode shadow (tiket 49); keputusan masih dari L1 in-process",
+    "detection-svc lambat atau mati: aplikasi tidak menunggu, event mencatat alasan dan detection_fallback_total naik",
+    "siem-export juga membaca audit_log dari PostgreSQL; token-vault menyimpan tokennya di PostgreSQL"
+   ]
+  },
+  {
+   "dot": "rose",
+   "title": "Kontrol keamanan lintas komponen",
+   "items": [
+    "mTLS SPIFFE antar-workload dan NetworkPolicy default-deny (tiket 40)",
+    "Kafka/OpenSearch TLS+SASL, ACL produce hanya untuk PEP (tiket 41)",
+    "RLS per tenant di PostgreSQL; audit log hash-chain dengan anchor WORM (tiket 42)"
+   ]
+  }
+ ]
+}

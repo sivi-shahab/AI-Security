@@ -4,8 +4,9 @@ A platform that controls sensitive data moving to, from, and through AI: public 
 AI agents. Every channel (prompts, file uploads, responses, agent tool calls, data at rest that AI can reach) is
 discovered, classified, risk-scored, and put under one policy.
 
-Full spec: [`.scratch/ai-data-security/spec.md`](.scratch/ai-data-security/spec.md) (Indonesian). Architecture
-diagram: [`.archify/architecture-aisec-platform/aisec-platform.html`](.archify/architecture-aisec-platform/aisec-platform.html).
+Full spec: [`.scratch/ai-data-security/spec.md`](.scratch/ai-data-security/spec.md) (Indonesian). Interactive
+architecture diagram (open in a browser: search, focus, route probe, Live trace):
+[`.archify/architecture-aisec-platform-20261017-131936/aisec-platform.html`](.archify/architecture-aisec-platform-20261017-131936/aisec-platform.html).
 
 ## Architecture
 
@@ -129,10 +130,13 @@ rotation: `docs/runbooks/rotasi-kunci-bundle.md`), signed images enforced by `de
 and egress to LLM providers allowed only through ai-gateway (`docs/runbooks/egress-ai-gateway.md`). Hosting and data
 residency decisions are in `docs/adr/0001-hosting-residency-build-scope.md`.
 
-## CI (`.gitlab-ci.yml`)
+## CI
 
-`lint` (gofmt, golangci-lint, ruff) → `test` (Go with race detector + integration services, Python) → `scan`
+GitLab (`.gitlab-ci.yml`, the release pipeline): `lint` (gofmt, golangci-lint, ruff) → `test` (Go with race detector + integration services, Python) → `scan`
 (Semgrep, Trivy vuln/license, gitleaks over full history, IaC) → `build` (BuildKit) → `publish` (SBOM) → `sign`.
+
+GitHub Actions (`.github/workflows/ci.yml`) mirrors lint, test (same integration backends) and scan on pushes to
+`main` and pull requests; build, SBOM and signing stay on GitLab.
 
 ## Documentation
 
