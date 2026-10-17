@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -39,9 +40,17 @@ func TestDetectionShadow(t *testing.T) {
 	}
 
 	t.Run("ok", func(t *testing.T) {
+		// The handler also runs for the response scan, after the test reads got: guard it.
+		var mu sync.Mutex
 		var got map[string]any
 		ds := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			_ = json.NewDecoder(r.Body).Decode(&got)
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			mu.Lock()
+			if got == nil {
+				got = body
+			}
+			mu.Unlock()
 			_, _ = w.Write([]byte(`{"l2":{"model":"l2-1+abc","mode":"shadow","status":"ok","latency_ms":12,
 				"entities":[{"type":"PII_ID.NIK","start":0,"end":16,"confidence":0.7},{"type":"PII_ID.NIK","start":20,"end":36,"confidence":0.9},{"type":"bogus","start":1,"end":2,"confidence":1}],
 				"injection":{"score":0.2,"types":[]}}}`))
@@ -57,6 +66,8 @@ func TestDetectionShadow(t *testing.T) {
 		if l2.status != "ok" || l2.model != "l2-1+abc" || l2.classes != 1 || l2.injection == nil || *l2.injection != 0.2 {
 			t.Errorf("L2 %+v", l2)
 		}
+		mu.Lock()
+		defer mu.Unlock()
 		if got["channel"] != "ai_gateway" || got["context"].(map[string]any)["trust"] == nil {
 			t.Errorf("scan request %v", got)
 		}

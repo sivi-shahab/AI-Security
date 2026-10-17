@@ -1092,7 +1092,8 @@ func TestKillSwitch(t *testing.T) {
 	select {
 	case at := <-closed:
 		t.Logf("kill in PDP → live session cut in %v", at.Sub(start))
-		if at.Sub(start) > 2*time.Second {
+		// The 2 s budget is timing, meaningless under -race (as in detect.TestLatencyBudget); the 5 s cut still holds.
+		if !raceEnabled && at.Sub(start) > 2*time.Second {
 			t.Errorf("session cut after %v", at.Sub(start))
 		}
 	case <-time.After(5 * time.Second):
