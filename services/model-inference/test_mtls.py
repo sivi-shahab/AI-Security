@@ -106,6 +106,7 @@ class ProbePortTest(unittest.TestCase):
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         self.addCleanup(srv.server_close)
         self.addCleanup(srv.shutdown)
+
         def status(method, path):
             c = http.client.HTTPConnection("127.0.0.1", srv.server_address[1])
             c.request(method, path, body=b"{}" if method == "POST" else None)

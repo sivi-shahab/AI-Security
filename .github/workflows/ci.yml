@@ -1,4 +1,6 @@
-# GitHub mirror of .gitlab-ci.yml lint → test → scan. Tool versions match the GitLab images.
+# GitHub mirror of .gitlab-ci.yml lint → test → scan. Tool versions match the GitLab images, except MinIO: Docker Hub
+# and quay no longer serve minio/minio, so this uses Chainguard's build (GitLab pulls the pinned release from the mirror).
+# Actions are pinned by commit SHA.
 # Build, SBOM and signing stay on GitLab: they push to the internal registry and sign with the protected key (ADR-0001).
 name: ci
 
@@ -18,17 +20,17 @@ jobs:
   lint-go:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with: {go-version-file: go.mod}
       - run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
-      - uses: golangci/golangci-lint-action@v8
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a  # v9.3.0
         with: {version: v2.5.0}
 
   lint-python:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - run: |
           docker run --rm -v "$PWD:/src" -w /src ghcr.io/astral-sh/ruff:0.14.0-alpine ruff check services
           docker run --rm -v "$PWD:/src" -w /src ghcr.io/astral-sh/ruff:0.14.0-alpine ruff format --check services
@@ -36,8 +38,8 @@ jobs:
   test-go:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/cache@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ~/go-cache
           key: go-${{ hashFiles('go.sum') }}
@@ -49,7 +51,7 @@ jobs:
           run() { docker run -d --network ci --name "$@" >/dev/null; }
           run postgres -e POSTGRES_PASSWORD=test postgres:17
           run minio -e MINIO_ROOT_USER=minio -e MINIO_ROOT_PASSWORD=minio-test-only \
-            minio/minio:RELEASE.2024-06-13T22-53-53Z server /data
+            cgr.dev/chainguard/minio@sha256:c93745c56fccdaf0e5dcb88999a96a65a136428beb045ef5d546255a80d747a7 server /tmp/data
           run kafka \
             -e KAFKA_NODE_ID=1 -e KAFKA_PROCESS_ROLES=broker,controller \
             -e KAFKA_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093,SASL://:9094 \
@@ -95,8 +97,8 @@ jobs:
   test-python:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with: {python-version: "3.11"}
       - working-directory: services/model-inference
         run: pip install --no-cache-dir -r requirements.txt && python -m unittest -v
@@ -104,13 +106,13 @@ jobs:
   sast:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - run: docker run --rm -v "$PWD:/src" -w /src semgrep/semgrep:1.140.0 semgrep scan --config p/default --metrics=off --error
 
   sca-iac:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - run: |
           trivy() { docker run --rm -v "$PWD:/src" -w /src aquasec/trivy:0.67.2 "$@"; }
           trivy fs --scanners vuln,license --severity HIGH,CRITICAL --exit-code 1 .
@@ -119,7 +121,7 @@ jobs:
   secrets:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with: {fetch-depth: 0}  # whole history, not just the tip
       # safe.directory: the checkout is owned by the runner user, not the container's.
       - run: |
